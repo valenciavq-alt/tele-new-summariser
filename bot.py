@@ -179,9 +179,10 @@ async def generate_summary(messages_text: str) -> str:
         AI-generated summary in bullet point format
     """
     # Determine which model to use
-    # IMPORTANT: Use claude-3-opus-20240229 as the default (most widely available)
+    # IMPORTANT: Use claude-3-haiku-20240307 as the default (most basic and universally available)
+    # Haiku is the fastest, most cost-effective model and should work for ALL API tiers
     # Only set CLAUDE_MODEL environment variable if you want to override this default
-    model_name = os.getenv('CLAUDE_MODEL', 'claude-3-opus-20240229')
+    model_name = os.getenv('CLAUDE_MODEL', 'claude-3-haiku-20240307')
     
     try:
         if not messages_text or messages_text == "No messages available to summarize.":
@@ -206,14 +207,14 @@ Please provide a brief summary in bullet points (maximum 8 points). Start with "
 """
         
         # Call Claude API
-        # Available Claude models:
-        # - claude-3-opus-20240229: Most capable and widely available (DEFAULT)
+        # Available Claude models (in order of accessibility):
+        # - claude-3-haiku-20240307: Fastest, most cost-effective, AVAILABLE TO ALL API TIERS (DEFAULT)
         # - claude-3-sonnet-20240229: Balanced performance and speed
-        # - claude-3-haiku-20240307: Fastest and most cost-effective
-        # - claude-3-5-sonnet-20240620: Latest Sonnet (may require specific API access)
+        # - claude-3-opus-20240229: Most capable (may require higher API tier)
+        # - claude-3-5-sonnet-20240620 / 20241022: Latest Sonnet (requires specific API access)
         # 
         # To change the model, set the CLAUDE_MODEL environment variable:
-        # export CLAUDE_MODEL='claude-3-haiku-20240307'
+        # export CLAUDE_MODEL='claude-3-sonnet-20240229'
         logger.info(f"Using Claude model: {model_name}")
         
         response = anthropic_client.messages.create(
@@ -233,17 +234,78 @@ Please provide a brief summary in bullet points (maximum 8 points). Start with "
         logger.error(error_msg)
         
         # Provide detailed error information to help with debugging
-        detailed_error = f"❌ Sorry, I encountered an error while generating the summary.\n\n"
-        detailed_error += f"**Model being used:** {model_name}\n"
-        detailed_error += f"**Error:** {str(e)}\n\n"
+        error_str = str(e).lower()
+        detailed_error = "❌ **Sorry, I encountered an error while generating the summary.**\n\n"
         
-        # Check if it's a model-related error
-        if "404" in str(e) or "not found" in str(e).lower():
-            detailed_error += "⚠️ **This appears to be a model availability error.**\n\n"
-            detailed_error += "**Troubleshooting steps:**\n"
-            detailed_error += "1. Check if the CLAUDE_MODEL environment variable is set (it should NOT be set unless you want to override the default)\n"
-            detailed_error += "2. Verify your API key has access to this model\n"
-            detailed_error += "3. Try setting CLAUDE_MODEL to 'claude-3-opus-20240229' or 'claude-3-haiku-20240307'\n"
+        # Distinguish between different error types
+        if "404" in str(e) or "not found" in error_str or "not_found" in error_str:
+            detailed_error += "🔍 **Error Type: Model Not Found (404)**\n\n"
+            detailed_error += f"**Model attempted:** `{model_name}`\n"
+            detailed_error += f"**Error details:** {str(e)}\n\n"
+            detailed_error += "**This means:** Your API key doesn't have access to this specific Claude model.\n\n"
+            detailed_error += "**✅ Recommended Solutions:**\n\n"
+            detailed_error += "1. **Check if CLAUDE_MODEL environment variable is set:**\n"
+            detailed_error += "   • Go to your deployment platform (Railway/Render)\n"
+            detailed_error += "   • Look in Environment Variables section\n"
+            detailed_error += "   • If `CLAUDE_MODEL` exists, DELETE it to use the default (Haiku)\n"
+            detailed_error += "   • Haiku (`claude-3-haiku-20240307`) should work for all API tiers\n\n"
+            detailed_error += "2. **Verify model availability in Anthropic Console:**\n"
+            detailed_error += "   • Visit: https://console.anthropic.com/\n"
+            detailed_error += "   • Check which models are available to your account\n"
+            detailed_error += "   • Ensure you have sufficient API credits\n\n"
+            detailed_error += "3. **Try alternative models (set CLAUDE_MODEL to one of these):**\n"
+            detailed_error += "   • `claude-3-haiku-20240307` (Recommended - works for all tiers)\n"
+            detailed_error += "   • `claude-3-sonnet-20240229` (Mid-tier)\n"
+            detailed_error += "   • `claude-3-opus-20240229` (May require higher tier)\n\n"
+            detailed_error += "📖 See README.md for detailed troubleshooting guide.\n"
+            
+        elif "401" in str(e) or "unauthorized" in error_str or "authentication" in error_str:
+            detailed_error += "🔑 **Error Type: Authentication Failed (401)**\n\n"
+            detailed_error += f"**Error details:** {str(e)}\n\n"
+            detailed_error += "**This means:** There's an issue with your Anthropic API key.\n\n"
+            detailed_error += "**✅ Solutions:**\n\n"
+            detailed_error += "1. **Verify your API key is correct:**\n"
+            detailed_error += "   • Go to https://console.anthropic.com/settings/keys\n"
+            detailed_error += "   • Check if your API key is active\n"
+            detailed_error += "   • If needed, create a new API key\n\n"
+            detailed_error += "2. **Check environment variable:**\n"
+            detailed_error += "   • Go to your deployment platform\n"
+            detailed_error += "   • Verify `ANTHROPIC_API_KEY` is set correctly\n"
+            detailed_error += "   • Make sure there are no extra spaces or characters\n\n"
+            detailed_error += "3. **Verify billing:**\n"
+            detailed_error += "   • Check https://console.anthropic.com/settings/billing\n"
+            detailed_error += "   • Ensure you have a valid payment method\n"
+            detailed_error += "   • Confirm you have available credits\n"
+            
+        elif "429" in str(e) or "rate" in error_str or "quota" in error_str:
+            detailed_error += "⏱️ **Error Type: Rate Limit or Quota Exceeded (429)**\n\n"
+            detailed_error += f"**Error details:** {str(e)}\n\n"
+            detailed_error += "**This means:** You've hit API rate limits or run out of credits.\n\n"
+            detailed_error += "**✅ Solutions:**\n\n"
+            detailed_error += "1. **Wait a moment and try again** (rate limits reset quickly)\n"
+            detailed_error += "2. **Check your usage:** https://console.anthropic.com/settings/billing\n"
+            detailed_error += "3. **Add more credits** if your balance is low\n"
+            detailed_error += "4. **Consider upgrading** your API tier for higher limits\n"
+            
+        elif "500" in str(e) or "503" in str(e) or "internal" in error_str:
+            detailed_error += "🔧 **Error Type: API Service Error (500/503)**\n\n"
+            detailed_error += f"**Error details:** {str(e)}\n\n"
+            detailed_error += "**This means:** There's a temporary issue with Anthropic's service.\n\n"
+            detailed_error += "**✅ Solutions:**\n\n"
+            detailed_error += "1. **Wait a few minutes and try again**\n"
+            detailed_error += "2. **Check Anthropic status:** https://status.anthropic.com/\n"
+            detailed_error += "3. **If issue persists, contact Anthropic support**\n"
+            
+        else:
+            # Generic error
+            detailed_error += "❓ **Error Type: Unknown**\n\n"
+            detailed_error += f"**Model:** `{model_name}`\n"
+            detailed_error += f"**Error details:** {str(e)}\n\n"
+            detailed_error += "**✅ General troubleshooting:**\n\n"
+            detailed_error += "1. Check deployment logs for more details\n"
+            detailed_error += "2. Verify all environment variables are set correctly\n"
+            detailed_error += "3. Confirm Anthropic API is operational: https://status.anthropic.com/\n"
+            detailed_error += "4. Try redeploying your bot\n"
         
         return detailed_error
 
@@ -400,12 +462,13 @@ def main():
     logger.info(f"Max message age: {MAX_MESSAGE_AGE_HOURS} hours")
     
     # Log Claude model configuration
-    configured_model = os.getenv('CLAUDE_MODEL', 'claude-3-opus-20240229')
+    configured_model = os.getenv('CLAUDE_MODEL', 'claude-3-haiku-20240307')
     if os.getenv('CLAUDE_MODEL'):
         logger.warning(f"⚠️ CLAUDE_MODEL environment variable is SET to: {configured_model}")
-        logger.warning("   This will override the default model in the code!")
+        logger.warning("   This will override the default model (Haiku) in the code!")
+        logger.warning("   If you're experiencing 404 errors, DELETE this environment variable!")
     else:
-        logger.info(f"✓ Using default Claude model: {configured_model}")
+        logger.info(f"✓ Using default Claude model: {configured_model} (Haiku - works for all API tiers)")
     
     # Start the bot
     application.run_polling(allowed_updates=Update.ALL_TYPES)

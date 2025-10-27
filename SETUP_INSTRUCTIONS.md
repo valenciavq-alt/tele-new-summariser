@@ -34,7 +34,9 @@ Before starting, make sure you have:
 - Telegram Bot: **FREE** ✨
 - GitHub: **FREE** ✨
 - Railway/Render: **FREE** tier available (sufficient for most users) ✨
-- Anthropic API: Pay-as-you-go (approximately $0.003-0.015 per summary with Claude 3.5 Sonnet)
+- Anthropic API: Pay-as-you-go with **Haiku** (DEFAULT) - approximately $0.0001-0.0005 per summary (very cheap!)
+  - 100 summaries ≈ $0.01-0.05
+  - 1000 summaries ≈ $0.10-0.50
 
 ---
 
@@ -125,10 +127,12 @@ Anthropic provides the Claude AI that creates the summaries. You'll need an API 
 
 **💰 Important Notes About Costs:**
 - Anthropic charges pay-as-you-go (you only pay for what you use)
-- Claude 3.5 Sonnet costs approximately $0.003-0.015 per summary
-- Example: 100 summaries = approximately $0.30-1.50
+- **Claude 3 Haiku (DEFAULT)** costs approximately $0.0001-0.0005 per summary (very cheap!)
+  - Example: 100 summaries ≈ $0.01-0.05
+  - Example: 1000 summaries ≈ $0.10-0.50
+- Other models cost more (Sonnet: $0.003-0.015, Opus: $0.015-0.075 per summary)
 - You can set spending limits in the Billing section
-- Recommended: Set a limit of $5-10/month to start
+- Recommended: Set a limit of $5-10/month to start (you'll likely use much less with Haiku)
 
 ### 2.3 Get Your API Key
 
@@ -252,8 +256,11 @@ This is where you'll add your Bot Token and Anthropic API Key!
    - Key: `ANTHROPIC_API_KEY`
    - Value: [Paste your Anthropic API key from Step 2]
 
-   **⚠️ IMPORTANT: Do NOT add the CLAUDE_MODEL variable unless you want to override the default!**
-   The bot is already configured to use `claude-3-opus-20240229` by default.
+   **⚠️ IMPORTANT: Do NOT add the CLAUDE_MODEL variable!**
+   - The bot is now configured to use **Haiku** (`claude-3-haiku-20240307`) by default
+   - Haiku works for ALL API tiers and is the most cost-effective model
+   - Only add this variable if you specifically need a different model AND have verified access
+   - Most 404 model errors are caused by this variable being set incorrectly!
    
    **Variable 4 (Optional - Usually NOT needed):**
    - Key: `MESSAGE_LIMIT`
@@ -337,8 +344,11 @@ Scroll down to the **Environment Variables** section:
    - Key: `ANTHROPIC_API_KEY`
    - Value: [Paste your Anthropic API key from Step 2]
 
-   **⚠️ IMPORTANT: Do NOT add the CLAUDE_MODEL variable unless you want to override the default!**
-   The bot is already configured to use `claude-3-opus-20240229` by default.
+   **⚠️ IMPORTANT: Do NOT add the CLAUDE_MODEL variable!**
+   - The bot is now configured to use **Haiku** (`claude-3-haiku-20240307`) by default
+   - Haiku works for ALL API tiers and is the most cost-effective model
+   - Only add this variable if you specifically need a different model AND have verified access
+   - Most 404 model errors are caused by this variable being set incorrectly!
    
    **Variable 4 (Optional - Usually NOT needed):**
    - Key: `MESSAGE_LIMIT`
@@ -504,50 +514,154 @@ Reply to any message in the group and mention the bot:
 
 **This is the most common issue!** If you see an error like:
 - `Error 404: model 'claude-3-5-sonnet-20241022' not found`
+- `Error 404: model 'claude-3-opus-20240229' not found`
 - `Model not available`
 - Any error mentioning a specific Claude model
 
-**Cause:** Either an environment variable is overriding the default model, or your API key doesn't have access to that model.
+**What this means:** Your API key doesn't have access to the specific Claude model being used.
 
-**Solution:**
+**✅ Solution (Follow these steps in order):**
 
-1. **Check your environment variables (MOST COMMON FIX):**
-   
-   **On Railway:**
-   - Go to your project dashboard
-   - Click on your service
-   - Click the **Variables** tab
-   - **Look for a variable named `CLAUDE_MODEL`**
-   - If you see it: **DELETE IT** (click the trash icon)
-   - The bot will automatically use the default model (`claude-3-opus-20240229`)
-   
-   **On Render:**
-   - Go to your service dashboard
-   - Click **Environment** in the left menu
-   - **Look for `CLAUDE_MODEL` variable**
-   - If you see it: **DELETE IT** (click delete button)
-   - Click **Save Changes**
+---
 
-2. **Verify the fix:**
-   - After deleting the variable, your bot will redeploy
-   - Check the **Logs** tab
-   - You should see: `✓ Using default Claude model: claude-3-opus-20240229`
-   - If you see: `⚠️ CLAUDE_MODEL environment variable is SET to:` - then the variable is still there
+#### Step 1: Delete the CLAUDE_MODEL environment variable (MOST COMMON FIX)
 
-3. **If you still have issues after removing the variable:**
+The bot now defaults to **Haiku** (`claude-3-haiku-20240307`), which works for ALL API tiers and is the cheapest.
 
-   **Check Anthropic API Key:**
-   - Log in to [console.anthropic.com](https://console.anthropic.com)
-   - Go to Billing → Usage
-   - Make sure you have available credits
-   - Check if your API key is active
-   - Verify you've added a payment method
+**On Railway:**
+1. Go to your project dashboard
+2. Click on your service
+3. Click the **Variables** tab
+4. **Look for a variable named `CLAUDE_MODEL`**
+5. If you see it: **DELETE IT** (click the trash icon)
+6. Bot will auto-redeploy with Haiku as default
 
-4. **API Rate Limits:**
-   - If many people use the bot at once, Anthropic might rate-limit you
-   - Wait a few minutes and try again
+**On Render:**
+1. Go to your service dashboard
+2. Click **Environment** in the left menu
+3. **Look for `CLAUDE_MODEL` variable**
+4. If you see it: **DELETE IT** (click delete button)
+5. Click **Save Changes**
 
-**⚠️ IMPORTANT:** The `CLAUDE_MODEL` environment variable should **NOT** be set unless you specifically want to override the default model. If you set it during initial setup, that's likely causing your issue!
+---
+
+#### Step 2: Verify the fix in deployment logs
+
+After redeployment, check logs for:
+- ✅ **Success:** `✓ Using default Claude model: claude-3-haiku-20240307 (Haiku - works for all API tiers)`
+- ❌ **Still an issue:** `⚠️ CLAUDE_MODEL environment variable is SET to:` (variable still exists - delete it again)
+
+**How to view logs:**
+- **Railway:** Project → Service → Deployments → View Logs
+- **Render:** Service → Logs tab
+
+---
+
+#### Step 3: Verify API key access in Anthropic Console
+
+If Haiku still doesn't work, there may be an issue with your API key or account.
+
+1. **Visit [Anthropic Console](https://console.anthropic.com/)**
+2. **Log in** to your account
+3. **Check API Keys:**
+   - Go to **Settings → API Keys**
+   - Verify your API key is listed and active
+   - Keys start with `sk-ant-api03-`
+   - If unsure, create a new API key and update your bot's environment variable
+4. **Check Billing:**
+   - Go to **Settings → Billing**
+   - Confirm you have a valid payment method
+   - Check your current balance and usage
+   - Ensure you haven't exceeded spending limits
+   - Add more credits if balance is low
+5. **Check Organization/Tier:**
+   - Go to **Settings → Organization** (if available)
+   - Check your API tier/plan
+   - Most free accounts have access to Haiku
+
+---
+
+#### Step 4: Test your API key in Anthropic Workbench
+
+To verify which models you have access to:
+
+1. **Visit [Anthropic Workbench](https://console.anthropic.com/workbench)**
+2. **Try different models** in the dropdown:
+   - `claude-3-haiku-20240307` ← Should work for everyone
+   - `claude-3-sonnet-20240229` ← May require higher tier
+   - `claude-3-opus-20240229` ← May require higher tier
+3. **Send a test message** (e.g., "Hello")
+4. **Note which models work** - you can only use these in your bot
+
+---
+
+#### Step 5: Understanding Model Availability
+
+**Model access by API tier:**
+
+| Model | Availability | Notes |
+|-------|--------------|-------|
+| `claude-3-haiku-20240307` | ✅ ALL tiers | **DEFAULT** - Fastest, cheapest, should always work |
+| `claude-3-sonnet-20240229` | ⚠️ Most tiers | May require account verification |
+| `claude-3-opus-20240229` | ⚠️ Higher tiers | May require higher API tier or spending |
+| `claude-3-5-sonnet-20240620` | ❌ Special access | Requires specific API access/tier |
+| `claude-3-5-sonnet-20241022` | ❌ Special access | Latest model, limited availability |
+
+**Important:** Anthropic doesn't publicly document which models are available per tier, but Haiku should work for ALL accounts.
+
+---
+
+#### Step 6: Try alternative models (only if Haiku fails)
+
+If even Haiku doesn't work (rare), try these in order:
+
+1. Set `CLAUDE_MODEL` environment variable to: `claude-3-sonnet-20240229`
+2. Redeploy and test
+3. If that fails, try: `claude-3-opus-20240229`
+4. If all fail, contact Anthropic support - there may be an account issue
+
+---
+
+#### Additional Troubleshooting
+
+**If you see "401 Unauthorized" or "Authentication Failed":**
+- Your API key is incorrect or inactive
+- Go to Anthropic Console → API Keys
+- Create a new key and update your bot's environment variable
+- Ensure no extra spaces or characters in the key
+
+**If you see "429 Rate Limit" or "Quota Exceeded":**
+- You've hit API usage limits or run out of credits
+- Wait a few minutes and try again
+- Check usage at [Anthropic Console → Usage](https://console.anthropic.com/settings/usage)
+- Add more credits if balance is low
+
+**If you see "500/503 Service Error":**
+- Temporary issue with Anthropic's service
+- Wait 5-10 minutes and try again
+- Check [Anthropic Status](https://status.anthropic.com/)
+
+---
+
+#### Quick Checklist
+
+Run through this to diagnose your issue:
+
+- [ ] `CLAUDE_MODEL` environment variable is **NOT set** (deleted)
+- [ ] Deployment logs show: `✓ Using default Claude model: claude-3-haiku-20240307`
+- [ ] `ANTHROPIC_API_KEY` is correct (starts with `sk-ant-api03-`)
+- [ ] Anthropic account has valid payment method
+- [ ] Anthropic account has available credits (check billing)
+- [ ] API key works in [Anthropic Workbench](https://console.anthropic.com/workbench)
+- [ ] [Anthropic Status](https://status.anthropic.com/) shows all systems operational
+
+---
+
+**⚠️ KEY REMINDER:** 
+- The bot defaults to **Haiku** which should work for ALL API tiers
+- Do **NOT** set `CLAUDE_MODEL` environment variable unless you need a specific model
+- If you're seeing 404 errors, 99% of the time it's because `CLAUDE_MODEL` is set incorrectly
+- **DELETE** the `CLAUDE_MODEL` variable to fix most issues!
 
 ### Problem: Bot stopped working after a few days
 
@@ -600,9 +714,14 @@ Reply to any message in the group and mention the bot:
 ### How much does it cost to run this bot?
 
 **Hosting:** Free (Railway/Render free tiers)
-**Anthropic API:** Approximately $0.003-0.015 per summary
-- 100 summaries ≈ $0.30-1.50
-- 1000 summaries ≈ $3-15
+**Anthropic API (with Haiku - DEFAULT):** Approximately $0.0001-0.0005 per summary (extremely cheap!)
+- 100 summaries ≈ $0.01-0.05
+- 1000 summaries ≈ $0.10-0.50
+- 10,000 summaries ≈ $1-5
+
+**Other models cost more:**
+- Sonnet: ~$0.003-0.015 per summary
+- Opus: ~$0.015-0.075 per summary
 
 ### Can I use this bot in multiple groups?
 
@@ -641,15 +760,21 @@ Yes! Edit the `bot.py` file and modify the prompt in the `generate_summary()` fu
 
 ### Can I use different Claude models?
 
-Yes! The default model is `claude-3-opus-20240229` (most widely available).
+Yes! The default model is now **`claude-3-haiku-20240307`** (works for ALL API tiers, fastest, and most cost-effective).
 
-To use a different model, set the `CLAUDE_MODEL` environment variable. Options include:
-- `claude-3-opus-20240229` (default - most widely available, highest quality)
-- `claude-3-sonnet-20240229` (faster, more economical)
-- `claude-3-haiku-20240307` (fastest and cheapest)
-- `claude-3-5-sonnet-20240620` (latest Sonnet - may require specific API access)
+**To use a different model:**
+1. Add the `CLAUDE_MODEL` environment variable in your deployment platform
+2. Set it to one of these values:
+   - `claude-3-haiku-20240307` ⭐ **DEFAULT** (works for all tiers, fastest, cheapest)
+   - `claude-3-sonnet-20240229` (balanced - may require higher tier)
+   - `claude-3-opus-20240229` (highest quality - may require higher tier)
+   - `claude-3-5-sonnet-20240620` (latest - requires special API access)
 
-**⚠️ Warning:** Only change this if you know your API key has access to the model. Most users should leave this unset to use the default!
+**⚠️ Warning:** 
+- Only change this if you've verified your API key has access to the model
+- Test in [Anthropic Workbench](https://console.anthropic.com/workbench) first
+- Most users should leave this unset to use Haiku (the default)
+- Setting this incorrectly is the #1 cause of 404 model errors!
 
 ### How do I stop the bot?
 
