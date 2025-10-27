@@ -4,26 +4,30 @@
 [![License](https://i.ytimg.com/vi/4cgpu9L2AE8/maxresdefault.jpg)
 [![Telegram Bot API](https://i.ytimg.com/vi/6JulxW0koZ0/maxresdefault.jpg)
 
-A smart Telegram bot that automatically summarizes group chat conversations using AI. Simply mention the bot in any group chat, and it will provide a concise bullet-point summary of recent messages!
+A smart Telegram bot that automatically summarizes conversations using AI in **both group chats and private/individual chats**. Simply mention the bot in a group chat or use the `/summarize` command, and it will provide a concise bullet-point summary of recent messages!
+
+> **🎉 NEW:** The bot now works in both **group chats** and **private/individual chats**! Use `/summarize` in any conversation to get an instant summary.
 
 ## ✨ Features
 
 - 🔍 **Smart Summarization**: Uses Anthropic's Claude models to create intelligent summaries
-- 💬 **Group Chat Support**: Works seamlessly in any Telegram group
+- 💬 **Dual Chat Support**: Works seamlessly in both group chats AND private/individual chats
 - 📝 **Bullet Point Format**: Easy-to-read summaries with key highlights
 - ⚡ **Real-time Processing**: Get summaries instantly when you need them
-- 🔒 **Privacy Focused**: Only processes messages when explicitly mentioned
+- 🔒 **Privacy Focused**: Only processes messages when explicitly requested
 - 🌍 **24/7 Availability**: Runs continuously on cloud platforms
-- 👥 **Multi-Group Support**: Use the same bot across multiple groups
-- ⚙️ **Customizable**: Adjust message limits and time ranges
+- 👥 **Multi-Chat Support**: Use the same bot across multiple groups and private conversations
+- ⚙️ **Customizable**: Adjust message limits and time ranges with optional parameters
 
 ## 🎯 Use Cases
 
-- **Catch up on missed conversations** when you've been away
+- **Catch up on missed conversations** when you've been away (both groups and private chats)
 - **Review long discussions** to extract key points
 - **Save time** by getting the gist without reading hundreds of messages
-- **Meeting recaps** for team discussions
+- **Meeting recaps** for team discussions in group chats
 - **Community updates** in large groups
+- **Personal chat summaries** for lengthy one-on-one conversations
+- **Study group discussions** in both group and private settings
 
 ## 🚀 Quick Start
 
@@ -65,15 +69,13 @@ See [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) for detailed deployment guide
 
 ## 📚 Usage
 
-### Adding the Bot to a Group
+### Using in Group Chats
 
 1. Add the bot to your Telegram group
 2. Make the bot an admin (so it can read messages)
 3. Start chatting!
 
-### Getting a Summary
-
-There are multiple ways to trigger a summary:
+**To get a summary in group chats:**
 
 **Method 1: Mention the bot**
 ```
@@ -82,11 +84,46 @@ There are multiple ways to trigger a summary:
 
 **Method 2: Use the command**
 ```
+/summarize
+```
+or
+```
 /summary
 ```
 
-**Method 3: Reply with mention**
+**Method 3: Use command with custom message count**
+```
+/summarize 50
+```
+This will summarize the last 50 messages instead of the default.
+
+**Method 4: Reply with mention**
 Reply to any message and mention the bot.
+
+---
+
+### Using in Private/Individual Chats
+
+1. Start a private chat with the bot
+2. Send some messages in your conversation
+3. Use the `/summarize` command to get a summary
+
+**To get a summary in private chats:**
+
+**Method 1: Use the command**
+```
+/summarize
+```
+or
+```
+/summary
+```
+
+**Method 2: Use command with custom message count**
+```
+/summarize 30
+```
+This will summarize the last 30 messages of your private conversation.
 
 ### Example Output
 
@@ -187,11 +224,12 @@ You can customize the bot's behavior by editing `bot.py`:
 
 - **No persistent storage**: Messages are not stored in a database
 - **In-memory only**: Last 100 messages kept in memory for quick access
-- **On-demand processing**: Only processes messages when explicitly mentioned
+- **On-demand processing**: Only processes messages when explicitly requested (via mention or `/summarize` command)
+- **Works in private chats**: The bot can summarize your private conversations while maintaining the same privacy standards
 - **Anthropic data policy**: Review [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy)
 - **Secure credentials**: All tokens and API keys stored as environment variables
 
-⚠️ **Important**: Messages are sent to Anthropic's API for summarization. Consider this before using in sensitive conversations.
+⚠️ **Important**: Messages are sent to Anthropic's API for summarization. Consider this before using in sensitive conversations (both in groups and private chats).
 
 ## 🛠️ Development
 
@@ -240,18 +278,25 @@ telegram-summarizer-bot/
 |---------|-------------|
 | `/start` | Show welcome message and instructions |
 | `/help` | Display help information |
-| `/summary` | Get a summary of recent messages |
+| `/summarize` or `/summary` | Get a summary of recent messages (works in both group and private chats) |
+| `/summarize <number>` | Get a summary of the last \<number\> messages (e.g., `/summarize 50`) |
 
 ## 🐛 Troubleshooting
 
-### Bot doesn't respond
-- Verify bot privacy settings are disabled in BotFather
+### Bot doesn't respond in group chats
+- Verify bot privacy settings are disabled in BotFather (Settings → Group Privacy → Turn OFF)
 - Check if bot is an admin in the group
 - Review deployment logs for errors
 
+### Bot doesn't respond in private chats
+- Make sure you're using the `/summarize` or `/summary` command (mentions don't work in private chats)
+- Verify the bot is running (check deployment status)
+- Review deployment logs for errors
+
 ### "No messages available"
-- Bot can only see messages after it was added to the group
+- Bot can only see messages after it was added to the group or started in private chat
 - Wait for more conversation, then try again
+- The bot needs at least a few messages to create a meaningful summary
 
 ### Anthropic API Errors - Complete Troubleshooting Guide
 

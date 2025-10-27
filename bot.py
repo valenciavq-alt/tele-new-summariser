@@ -1,8 +1,11 @@
 """
 Telegram Message Summarizer Bot
 
-This bot listens for mentions in Telegram group chats and provides
-AI-generated summaries of recent messages.
+This bot provides AI-generated summaries of recent messages in both
+Telegram group chats and private/individual chats.
+
+In group chats: mention the bot or use /summarize command
+In private chats: use /summarize command
 """
 
 import os
@@ -46,25 +49,32 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_message = """
 👋 **Welcome to the Message Summarizer Bot!**
 
-I can help summarize conversations in your group chats.
+I can help summarize conversations in your group chats AND private chats!
 
 **How to use me:**
+
+**In Group Chats:**
 1. Add me to your Telegram group
 2. Give me permission to read messages
-3. Mention me with @{} or reply to a message with my mention
+3. Mention me with @{} or use /summarize command
 4. I'll summarize the recent messages in bullet points!
+
+**In Private Chats:**
+1. Send me messages in this private chat
+2. Use the /summarize command
+3. I'll summarize our recent conversation!
 
 **Commands:**
 /start - Show this welcome message
 /help - Get help on how to use the bot
-/summary - Get a summary of recent messages (works in groups)
+/summarize - Get a summary of recent messages (works in both group and private chats)
 
 **Example:**
-"@{} what did I miss?" or "@{} summarize"
+In groups: "@{} what did I miss?" or use /summarize
+In private chats: Just type /summarize
 
-Let's get started! Add me to a group and give it a try! 🚀
+Let's get started! 🚀
     """.format(
-        get_bot_username() or "bot",
         get_bot_username() or "bot",
         get_bot_username() or "bot"
     )
@@ -78,28 +88,36 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🤖 **Message Summarizer Bot - Help**
 
 **How it works:**
-When you mention me in a group chat, I'll read the last {} messages and create a brief summary with key points.
+I can summarize recent messages in both group chats and private chats! I'll read the last {} messages and create a brief summary with key points.
 
 **Ways to use:**
+
+**In Group Chats:**
 • Mention me: @{} 
-• Use the command: /summary
+• Use the command: /summarize
 • Reply to any message and mention me
 
+**In Private Chats:**
+• Use the command: /summarize
+• I'll summarize our recent conversation
+
 **Tips:**
-• I work best in active group discussions
+• I work in both group discussions and private chats
 • I'll only summarize messages from the last {} hours
 • The summary will be in bullet point format for easy reading
 
 **Privacy:**
-• I only read messages when explicitly mentioned
-• I don't store any chat history
+• In groups: I only process messages when explicitly mentioned or commanded
+• In private: I only summarize when you use /summarize
+• I don't store chat history permanently (only last {} messages in memory)
 • All processing is done in real-time
 
 Need more help? Contact the bot administrator.
     """.format(
         MESSAGE_LIMIT,
         get_bot_username() or "bot",
-        MAX_MESSAGE_AGE_HOURS
+        MAX_MESSAGE_AGE_HOURS,
+        MAX_STORED_MESSAGES
     )
     
     await update.message.reply_text(help_message, parse_mode='Markdown')
@@ -361,25 +379,50 @@ async def get_stored_messages(chat_id: int, limit: int = MESSAGE_LIMIT) -> List[
 
 async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle when the bot is mentioned in a message"""
+    # Store this message first
+    await store_message(update)
+    
+    # Reuse the summary request handler
+    await handle_summary_request(update, context, MESSAGE_LIMIT)
+
+
+async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /summary and /summarize commands with optional number parameter"""
+    # Store this message
+    await store_message(update)
+    
+    # Check if a custom message limit was provided
+    custom_limit = MESSAGE_LIMIT
+    if context.args and len(context.args) > 0:
+        try:
+            custom_limit = int(context.args[0])
+            # Enforce reasonable limits
+            if custom_limit < 1:
+                custom_limit = 1
+            elif custom_limit > MAX_STORED_MESSAGES:
+                custom_limit = MAX_STORED_MESSAGES
+        except ValueError:
+            # If the argument is not a valid number, use default
+            pass
+    
+    # Use custom handler logic with custom limit
+    await handle_summary_request(update, context, custom_limit)
+
+
+async def handle_summary_request(update: Update, context: ContextTypes.DEFAULT_TYPE, message_limit: int = MESSAGE_LIMIT):
+    """Handle summary request with custom message limit"""
     try:
-        # Store this message first
-        await store_message(update)
-        
         chat_id = update.effective_chat.id
         chat_type = update.effective_chat.type
         
-        # Check if this is a group chat
-        if chat_type not in ['group', 'supergroup']:
-            await update.message.reply_text(
-                "🤖 I work best in group chats! Add me to a group and mention me to get message summaries."
-            )
-            return
+        # Bot now works in both group chats and private chats
+        # No chat type restriction needed
         
         # Send a "working on it" message
         status_message = await update.message.reply_text("🤔 Let me read through the recent messages and create a summary for you...")
         
-        # Get stored messages
-        messages = await get_stored_messages(chat_id, MESSAGE_LIMIT)
+        # Get stored messages with custom limit
+        messages = await get_stored_messages(chat_id, message_limit)
         
         logger.info(f"Found {len(messages)} messages to summarize for chat {chat_id}")
         
@@ -403,19 +446,10 @@ async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await status_message.edit_text(response)
         
     except Exception as e:
-        logger.error(f"Error handling mention: {e}")
+        logger.error(f"Error handling summary request: {e}")
         await update.message.reply_text(
             f"❌ Sorry, I encountered an error: {str(e)}\n\nPlease try again later."
         )
-
-
-async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /summary command"""
-    # Store this message
-    await store_message(update)
-    
-    # Reuse the mention handler logic
-    await handle_mention(update, context)
 
 
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -443,6 +477,7 @@ def main():
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("summary", summary_command))
+    application.add_handler(CommandHandler("summarize", summary_command))  # Also support /summarize
     
     # Register handler for mentions (when bot is tagged)
     application.add_handler(MessageHandler(
