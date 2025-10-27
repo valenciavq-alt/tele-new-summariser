@@ -11,7 +11,7 @@ In private chats: use /summarize command
 import os
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict
 import asyncio
 
 from telegram import Update, Message
@@ -30,6 +30,9 @@ from timeframe_parser import TimeframeParser, parse_timeframe
 
 # Import cost tracker module
 from cost_tracker import initialize_cost_tracker, get_cost_tracker
+
+# Import smart sampler module
+from smart_sampler import get_smart_sampler
 
 # Configure logging
 logging.basicConfig(
@@ -124,6 +127,14 @@ You can now specify custom timeframes for summaries!
 **Examples:**
 • `/summarize` - Default (last {} messages)
 • `/summarize 50` - Summarize last 50 messages
+
+**Shorthand Syntax (NEW):** ⭐
+• `/summarize 24h` - Last 24 hours
+• `/summarize 60d` - Last 60 days
+• `/summarize 2mo` - Last 2 months
+• `/summarize 3w` - Last 3 weeks
+
+**Natural Language:**
 • `/summarize today` - Today's messages
 • `/summarize yesterday` - Yesterday's messages
 • `/summarize last 2 hours` - Last 2 hours
@@ -131,6 +142,12 @@ You can now specify custom timeframes for summaries!
 • `/summarize last 1 week` - Last week
 • `/summarize from 2024-01-15 to 2024-01-20` - Specific date range
 • `/summarize on 2024-01-15` - Specific day
+
+**Smart Features:**
+• **Hard Limits:** Max 1000 messages per request
+• **Smart Sampling:** Auto-sampling for large timeframes
+• **Cost Warnings:** Alerts before expensive operations
+• **Budget Protection:** Monthly spending limits
 
 **Storage:**
 • Messages are stored in: {}
@@ -192,6 +209,106 @@ async def fetch_recent_messages(
     except Exception as e:
         logger.error(f"Error fetching messages: {e}")
         return []
+
+
+def estimate_api_cost(message_count: int, messages_text: Optional[str] = None) -> Dict:
+    """
+    Estimate the API cost for processing messages
+    
+    Args:
+        message_count: Number of messages to be processed
+        messages_text: Optional formatted messages text for precise estimation
+    
+    Returns:
+        Dict with cost estimation details:
+        {
+            'estimated_input_tokens': int,
+            'estimated_output_tokens': int,
+            'estimated_cost': float,
+            'warning_threshold_exceeded': bool
+        }
+    """
+    # Token estimation (conservative estimates)
+    # Average message: ~50 tokens, plus prompt overhead (~200 tokens)
+    # Output: typically 100-500 tokens depending on message count
+    
+    if messages_text:
+        # More precise estimation based on actual text
+        # Rough approximation: 1 token ≈ 4 characters
+        estimated_input_tokens = len(messages_text) // 4 + 300  # +300 for prompt
+    else:
+        # Rough estimation based on message count
+        estimated_input_tokens = (message_count * 50) + 300
+    
+    # Output tokens scale with input but are typically smaller
+    estimated_output_tokens = min(500, max(100, message_count // 2))
+    
+    # Calculate cost using Claude Haiku pricing
+    INPUT_TOKEN_COST = 0.25 / 1_000_000  # $0.25 per 1M tokens
+    OUTPUT_TOKEN_COST = 1.25 / 1_000_000  # $1.25 per 1M tokens
+    
+    estimated_cost = (
+        (estimated_input_tokens * INPUT_TOKEN_COST) +
+        (estimated_output_tokens * OUTPUT_TOKEN_COST)
+    )
+    
+    # Warning threshold: $0.50
+    WARNING_THRESHOLD = 0.50
+    
+    return {
+        'estimated_input_tokens': estimated_input_tokens,
+        'estimated_output_tokens': estimated_output_tokens,
+        'estimated_cost': estimated_cost,
+        'warning_threshold_exceeded': estimated_cost > WARNING_THRESHOLD,
+        'warning_threshold': WARNING_THRESHOLD
+    }
+
+
+def check_database_availability_for_timeframe(
+    timeframe_str: Optional[str],
+    start_time: Optional[datetime]
+) -> Optional[str]:
+    """
+    Check if database is needed for the requested timeframe
+    
+    Args:
+        timeframe_str: Human-readable timeframe description
+        start_time: Start time of the timeframe
+    
+    Returns:
+        Warning message if database is needed but not available, None otherwise
+    """
+    if start_time is None:
+        # Count-based query, no issue
+        return None
+    
+    if db_manager.enabled:
+        # Database is available, no issue
+        return None
+    
+    # Calculate timeframe length
+    now = datetime.now(timezone.utc)
+    timeframe_length = (now - start_time).total_seconds() / 3600  # in hours
+    
+    # If timeframe is longer than MAX_MESSAGE_AGE_HOURS, warn user
+    if timeframe_length > MAX_MESSAGE_AGE_HOURS:
+        warning = (
+            f"⚠️ **Database Not Configured**\n\n"
+            f"You're querying a timeframe of **{timeframe_str}**, but the bot is running "
+            f"without a persistent database.\n\n"
+            f"**This means:**\n"
+            f"• Only messages from the last **{MAX_MESSAGE_AGE_HOURS} hours** are available\n"
+            f"• Only the last **{MAX_STORED_MESSAGES} messages** are kept in memory\n"
+            f"• Message history is lost when the bot restarts\n\n"
+            f"**To access longer history:**\n"
+            f"1. Set up a PostgreSQL database (see README.md)\n"
+            f"2. Add the `DATABASE_URL` environment variable\n"
+            f"3. Redeploy the bot\n\n"
+            f"I'll search the available messages, but results may be limited."
+        )
+        return warning
+    
+    return None
 
 
 def format_messages_for_summary(messages: List[dict]) -> str:
@@ -558,6 +675,9 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "❌ Invalid timeframe format.\n\n"
                         "**Valid formats:**\n"
                         "• `/summarize 50` - Last 50 messages\n"
+                        "• `/summarize 24h` - Last 24 hours (shorthand)\n"
+                        "• `/summarize 60d` - Last 60 days (shorthand)\n"
+                        "• `/summarize 2mo` - Last 2 months (shorthand)\n"
                         "• `/summarize today`\n"
                         "• `/summarize yesterday`\n"
                         "• `/summarize last 2 hours`\n"
@@ -581,6 +701,9 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "❌ Invalid timeframe format.\n\n"
                     "**Valid formats:**\n"
                     "• `/summarize 50` - Last 50 messages\n"
+                    "• `/summarize 24h` - Last 24 hours (shorthand)\n"
+                    "• `/summarize 60d` - Last 60 days (shorthand)\n"
+                    "• `/summarize 2mo` - Last 2 months (shorthand)\n"
                     "• `/summarize today`\n"
                     "• `/summarize yesterday`\n"
                     "• `/summarize last 2 hours`\n"
@@ -613,6 +736,12 @@ async def handle_summary_request(
     """
     Handle summary request with custom parameters
     
+    This function now includes:
+    - Database requirement checks for long timeframes
+    - Hard message limits with smart sampling
+    - Cost estimation and warnings
+    - User confirmation for expensive operations
+    
     Args:
         update: Telegram update object
         context: Telegram context
@@ -628,10 +757,18 @@ async def handle_summary_request(
         # Bot now works in both group chats and private chats
         # No chat type restriction needed
         
+        # STEP 1: Check database availability for timeframe queries
+        db_warning = check_database_availability_for_timeframe(timeframe_str, start_time)
+        if db_warning:
+            # Send warning but continue processing
+            await update.message.reply_text(db_warning, parse_mode='Markdown')
+            # Brief pause for user to read
+            await asyncio.sleep(2)
+        
         # Send a "working on it" message
         status_message = await update.message.reply_text("🤔 Let me read through the recent messages and create a summary for you...")
         
-        # Get stored messages with custom limit or timeframe
+        # STEP 2: Get stored messages with custom limit or timeframe
         if start_time is not None:
             # Timeframe-based retrieval
             messages = await get_stored_messages(
@@ -660,20 +797,89 @@ async def handle_summary_request(
                 )
             return
         
-        # Format messages
+        # STEP 3: Check message count and apply smart sampling if needed
+        sampler = get_smart_sampler()
+        check_result = sampler.check_message_count(len(messages))
+        
+        original_message_count = len(messages)
+        sampling_applied = False
+        
+        if check_result['should_sample']:
+            # Inform user about sampling
+            if check_result['warning_message']:
+                await status_message.edit_text(check_result['warning_message'], parse_mode='Markdown')
+                await asyncio.sleep(2)  # Let user read the message
+            
+            # Apply smart sampling
+            messages = sampler.sample_messages(
+                messages,
+                check_result['recommended_sample_size']
+            )
+            sampling_applied = True
+            logger.info(f"Smart sampling applied: {original_message_count} → {len(messages)} messages")
+        
+        # STEP 4: Format messages for API
         messages_text = format_messages_for_summary(messages)
         
-        # Generate summary (pass context for admin notifications)
+        # STEP 5: Estimate cost and warn if expensive
+        cost_estimate = estimate_api_cost(len(messages), messages_text)
+        
+        if cost_estimate['warning_threshold_exceeded']:
+            # Warn user about high cost
+            warning_msg = (
+                f"⚠️ **High Cost Warning**\n\n"
+                f"This summary will be expensive:\n"
+                f"• Estimated cost: **${cost_estimate['estimated_cost']:.4f}**\n"
+                f"• Estimated tokens: ~{cost_estimate['estimated_input_tokens'] + cost_estimate['estimated_output_tokens']:,}\n"
+                f"• Warning threshold: ${cost_estimate['warning_threshold']:.2f}\n\n"
+                f"📊 Processing {len(messages):,} messages"
+            )
+            if sampling_applied:
+                warning_msg += f" (sampled from {original_message_count:,})"
+            warning_msg += "\n\n⚡ Proceeding with summary generation..."
+            
+            await status_message.edit_text(warning_msg, parse_mode='Markdown')
+            await asyncio.sleep(2)
+            
+            # Check budget before proceeding
+            tracker = get_cost_tracker()
+            if tracker:
+                can_proceed, budget_error = tracker.can_make_request(
+                    estimated_tokens=cost_estimate['estimated_input_tokens'] + cost_estimate['estimated_output_tokens']
+                )
+                if not can_proceed:
+                    await status_message.edit_text(budget_error, parse_mode='Markdown')
+                    return
+        
+        # Update status
+        await status_message.edit_text("🤖 Generating AI summary...", parse_mode='Markdown')
+        
+        # STEP 6: Generate summary (pass context for admin notifications)
         summary = await generate_summary(messages_text, context)
         
-        # Send the summary with appropriate context
+        # STEP 7: Prepare response with appropriate context
+        response_parts = [summary]
+        
+        # Add statistics
+        stats_line = f"\n\n📊 Summarized **{len(messages):,} messages**"
+        if sampling_applied:
+            stats_line += f" (intelligently sampled from **{original_message_count:,} messages**)"
+        
         if start_time is not None:
             # Format the dates nicely
             start_str = start_time.strftime('%Y-%m-%d %H:%M UTC')
             end_str = end_time.strftime('%Y-%m-%d %H:%M UTC') if end_time else 'now'
-            response = f"{summary}\n\n📊 Summarized {len(messages)} messages from **{timeframe_str}**\n⏰ ({start_str} to {end_str})"
+            stats_line += f" from **{timeframe_str}**\n⏰ ({start_str} to {end_str})"
         else:
-            response = f"{summary}\n\n📊 Summarized {len(messages)} messages from the last {MAX_MESSAGE_AGE_HOURS} hours."
+            stats_line += f" from the last {MAX_MESSAGE_AGE_HOURS} hours"
+        
+        response_parts.append(stats_line)
+        
+        # Add cost info if significant
+        if cost_estimate['estimated_cost'] > 0.01:  # More than 1 cent
+            response_parts.append(f"\n💰 Estimated cost: ${cost_estimate['estimated_cost']:.4f}")
+        
+        response = "".join(response_parts)
         
         await status_message.edit_text(response, parse_mode='Markdown')
         

@@ -17,12 +17,18 @@ A smart Telegram bot that automatically summarizes conversations using AI in **b
 - 🗄️ **PostgreSQL Database Support**: Store unlimited message history (optional, with fallback to in-memory)
 - 📅 **Custom Timeframe Filtering**: Summarize messages from specific time periods
   - Relative timeframes: "last 2 hours", "today", "yesterday"
+  - Shorthand syntax: "60d", "2mo", "3w", "24h" ⭐ **NEW**
   - Absolute date ranges: "from 2024-01-15 to 2024-01-20", "on 2024-01-15"
 - 💰 **Budget Protection & Cost Tracking**: Built-in monthly budget enforcement with automatic tracking
   - Set budget limits to prevent unexpected charges
   - Real-time usage monitoring with `/usage` command
   - Automatic alerts at 50%, 75%, and 90% of budget
   - Monthly auto-reset on the 1st of each month
+- 🛡️ **Smart Safeguards** ⭐ **NEW**: Comprehensive protection against unexpected costs
+  - **Hard Message Limits**: Maximum 1,000 messages per request
+  - **Smart Sampling**: Intelligent message selection for large datasets
+  - **Cost Estimation**: Pre-request cost warnings (warns if >$0.50)
+  - **Database Checks**: Warnings for long timeframes without persistent storage
 - 🔒 **Privacy Focused**: Only processes messages when explicitly requested
 - 🌍 **24/7 Availability**: Runs continuously on cloud platforms
 - 👥 **Multi-Chat Support**: Use the same bot across multiple groups and private conversations
@@ -106,7 +112,15 @@ or
 ```
 This will summarize the last 50 messages instead of the default.
 
-**Method 4: Use command with custom timeframes** ⭐ **NEW**
+**Method 4: Use command with shorthand timeframes** ⭐ **NEW**
+```
+/summarize 24h
+/summarize 60d
+/summarize 2mo
+/summarize 3w
+```
+
+**Method 5: Use command with natural language timeframes**
 ```
 /summarize today
 /summarize yesterday
@@ -116,7 +130,7 @@ This will summarize the last 50 messages instead of the default.
 /summarize on 2024-01-15
 ```
 
-**Method 5: Reply with mention**
+**Method 6: Reply with mention**
 Reply to any message and mention the bot.
 
 ---
@@ -144,7 +158,14 @@ or
 ```
 This will summarize the last 30 messages of your private conversation.
 
-**Method 3: Use command with custom timeframes** ⭐ **NEW**
+**Method 3: Use command with shorthand timeframes** ⭐ **NEW**
+```
+/summarize 24h
+/summarize 7d
+/summarize 2mo
+```
+
+**Method 4: Use command with natural language timeframes**
 ```
 /summarize today
 /summarize yesterday
@@ -417,6 +438,153 @@ The bot includes automatic cost tracking and budget enforcement:
 
 This ensures you never have surprise charges and stay within your planned budget!
 
+## 🛡️ Smart Safeguards & Protection Features
+
+The bot includes comprehensive safeguards to protect you from unexpected costs while ensuring reliable operation:
+
+### 1. **Hard Message Limits**
+
+To prevent overwhelming the API and your budget:
+
+- **Maximum limit:** 1,000 messages per summary request
+- **Automatic enforcement:** If you request a timeframe with more messages, smart sampling kicks in automatically
+- **User notification:** You'll be informed when the limit is reached
+
+**Example:**
+```
+/summarize 60d  # If this returns 5,000 messages
+```
+
+Response:
+```
+⚠️ Message Limit Exceeded
+
+Found 5,000 messages but the maximum allowed is 1,000.
+
+🤖 Smart Sampling will be used:
+• I'll intelligently select 1,000 representative messages
+• Messages will be evenly distributed across the timeframe
+• Longer, more substantive messages will be prioritized
+• The summary will still capture the key themes and discussions
+
+Proceeding with smart sampling...
+```
+
+### 2. **Smart Sampling**
+
+When message counts are high (>500), the bot uses intelligent sampling:
+
+**How it works:**
+- **Even Distribution:** Messages are sampled evenly across the entire timeframe
+- **Engagement Priority:** Longer, more substantive messages are prioritized
+- **Context Preservation:** The sampling maintains chronological flow and context
+- **Automatic Application:** No user intervention needed
+
+**Benefits:**
+- Faster processing
+- Lower API costs
+- Better quality summaries (less noise)
+- Captures representative discussion
+
+**Example output:**
+```
+📊 Summarized 500 messages (intelligently sampled from 2,345 messages)
+🔍 Smart Sampling Applied:
+• Original: 2,345 messages
+• Analyzed: 500 messages
+• Sampling: 21.3% of messages
+• Method: Evenly distributed across timeframe, prioritizing substantive messages
+```
+
+### 3. **Cost Estimation & Warnings**
+
+Before processing expensive summaries, the bot calculates and warns you:
+
+**Cost Warning Threshold:** $0.50 per request
+
+**What you'll see:**
+```
+⚠️ High Cost Warning
+
+This summary will be expensive:
+• Estimated cost: $0.6234
+• Estimated tokens: ~15,234
+• Warning threshold: $0.50
+
+📊 Processing 800 messages
+
+⚡ Proceeding with summary generation...
+```
+
+**Features:**
+- Pre-request cost estimation based on message count and content
+- Automatic budget check before processing
+- Request blocked if monthly budget exceeded
+- Transparent cost reporting after each summary
+
+### 4. **Database Requirement Checks**
+
+For long timeframes without a database, you'll get a helpful warning:
+
+**Example:**
+```
+/summarize 60d  # Without DATABASE_URL configured
+```
+
+Response:
+```
+⚠️ Database Not Configured
+
+You're querying a timeframe of 60d, but the bot is running without a persistent database.
+
+This means:
+• Only messages from the last 24 hours are available
+• Only the last 100 messages are kept in memory
+• Message history is lost when the bot restarts
+
+To access longer history:
+1. Set up a PostgreSQL database (see README.md)
+2. Add the DATABASE_URL environment variable
+3. Redeploy the bot
+
+I'll search the available messages, but results may be limited.
+```
+
+### 5. **Budget Tracking Integration**
+
+All safeguards work together with the budget tracking system:
+
+- **Pre-check:** Estimated cost checked against remaining budget
+- **Hard stop:** Request blocked if it would exceed monthly limit
+- **Cost tracking:** Actual costs tracked after each request
+- **Admin alerts:** Notifications at 50%, 75%, and 90% thresholds
+
+### Recommended Usage Patterns
+
+**For $10/month budget (using Claude Haiku):**
+
+✅ **Efficient Usage:**
+- Use shorthand syntax: `/summarize 7d` instead of counting messages
+- Let smart sampling handle large datasets automatically
+- Check `/usage` regularly to monitor spending
+- Use database storage for long-term history
+
+⚠️ **What to avoid:**
+- Repeatedly requesting very large timeframes without database
+- Summarizing more than 500 messages per request when possible
+- Ignoring budget warnings
+
+**Cost Examples (with Haiku):**
+- 50 messages: ~$0.0001-0.0003
+- 100 messages: ~$0.0003-0.0008
+- 500 messages: ~$0.002-0.005
+- 1000 messages: ~$0.005-0.01
+
+With $10/month, you can typically handle:
+- **2,000-5,000 summaries** of ~100 messages each
+- **500-1,000 summaries** of ~500 messages each
+- **Mix of sizes:** Most common usage pattern
+
 ## 🔒 Privacy & Security
 
 - **Optional database storage**: You control whether messages are stored persistently
@@ -465,8 +633,9 @@ python bot.py
 telegram-summarizer-bot/
 ├── bot.py                    # Main bot application
 ├── database.py               # PostgreSQL database module
-├── timeframe_parser.py       # Timeframe parsing module
+├── timeframe_parser.py       # Timeframe parsing module (with shorthand support)
 ├── cost_tracker.py           # Cost tracking and budget enforcement
+├── smart_sampler.py          # Smart sampling for large message sets ⭐ NEW
 ├── cost_data.json            # Persistent cost tracking data (auto-generated)
 ├── requirements.txt          # Python dependencies
 ├── .env.example             # Environment variables template
@@ -491,6 +660,7 @@ telegram-summarizer-bot/
 | `/resetusage` | Manually reset usage statistics (admin only - requires ADMIN_USER_ID) |
 
 **Supported Timeframes:**
+- Shorthand: `24h`, `60d`, `2mo`, `3w` (h=hours, d=days, w=weeks, mo=months) ⭐ **NEW**
 - Relative: `today`, `yesterday`, `last X hours`, `last X days`, `last X weeks`
 - Absolute: `from YYYY-MM-DD to YYYY-MM-DD`, `on YYYY-MM-DD`
 
@@ -701,6 +871,11 @@ Recent additions:
 - [x] PostgreSQL database support for persistent storage
 - [x] Custom timeframe filtering (relative and absolute dates)
 - [x] Budget tracking and cost enforcement system
+- [x] Shorthand timeframe syntax (60d, 2mo, 3w, 24h) ⭐ **NEW**
+- [x] Hard message limits (max 1000 per request) ⭐ **NEW**
+- [x] Smart sampling for large message sets ⭐ **NEW**
+- [x] Cost estimation and warnings before processing ⭐ **NEW**
+- [x] Database requirement checks for long timeframes ⭐ **NEW**
 
 Future improvements planned:
 - [ ] Support for multiple languages
