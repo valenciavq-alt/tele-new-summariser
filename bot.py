@@ -227,11 +227,13 @@ async def generate_summary(messages_text: str) -> str:
             return "⚠️ No recent messages available to summarize. I can only summarize messages that I've seen since being added to the group."
         
         # Create the prompt for Claude
-        prompt = f"""Catch me up on the group chat like you're my friend. What'd I miss? 
+        prompt = f"""Summarize these messages in a casual, friendly way like you're catching me up. What'd I miss?
 
-Just give me the vibe of the conversation and anything I actually need to know - who said what about what, any plans being made, anyone asking for me, funny moments, whatever matters.
+BUT - and this is CRITICAL - ONLY mention things that are actually in the messages below. Don't make up names, events, or details. Don't add creative interpretations or assume things that weren't said. Stick strictly to what was ACTUALLY written in these messages.
 
-Be natural about it. Pretend I just texted you "bro what happened in the chat" and you're filling me in.
+Just give me the vibe of the conversation and anything I actually need to know - who said what about what, any plans being made, anyone asking for me, funny moments, whatever matters. But everything you mention must be directly from the messages.
+
+Be natural about it. Pretend I just texted you "bro what happened in the chat" and you're filling me in - but you're only telling me what ACTUALLY happened based on these exact messages.
 
 If there's only like 2-3 messages, just tell me what they said. If it's a ton of messages, give me the condensed version.
 
