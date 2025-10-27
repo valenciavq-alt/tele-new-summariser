@@ -7,7 +7,7 @@ AI-generated summaries of recent messages.
 
 import os
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional
 import asyncio
 
@@ -123,7 +123,7 @@ async def fetch_recent_messages(
     """
     messages = []
     message_count = 0
-    current_time = datetime.now()
+    current_time = datetime.now(timezone.utc)
     cutoff_time = current_time - timedelta(hours=MAX_MESSAGE_AGE_HOURS)
     
     try:
@@ -256,8 +256,8 @@ async def get_stored_messages(chat_id: int, limit: int = MESSAGE_LIMIT) -> List[
     
     messages = chat_message_store[chat_id]
     
-    # Filter by age
-    cutoff_time = datetime.now() - timedelta(hours=MAX_MESSAGE_AGE_HOURS)
+    # Filter by age - use timezone-aware datetime (UTC)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(hours=MAX_MESSAGE_AGE_HOURS)
     recent_messages = [
         msg for msg in messages
         if msg.get('date') and msg['date'] > cutoff_time
