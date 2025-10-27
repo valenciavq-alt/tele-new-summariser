@@ -84,6 +84,20 @@ class DatabaseManager:
                 )
             """)
             
+            # Create summaries table for tracking usage
+            await conn.execute("""
+                CREATE TABLE IF NOT EXISTS summaries (
+                    id SERIAL PRIMARY KEY,
+                    chat_id BIGINT NOT NULL,
+                    user_id BIGINT,
+                    message_count INT NOT NULL,
+                    input_tokens INT,
+                    output_tokens INT,
+                    model TEXT,
+                    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+                )
+            """)
+            
             # Create indexes for better query performance
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_messages_chat_id 
@@ -93,6 +107,11 @@ class DatabaseManager:
             await conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_messages_date 
                 ON messages(chat_id, date DESC)
+            """)
+            
+            await conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_summaries_chat_id 
+                ON summaries(chat_id)
             """)
             
             logger.info("Database tables created/verified")
@@ -286,6 +305,160 @@ class DatabaseManager:
                 
         except Exception as e:
             logger.error(f"Error cleaning up old messages: {e}")
+    
+    async def track_summary(
+        self,
+        chat_id: int,
+        user_id: Optional[int],
+        message_count: int,
+        input_tokens: Optional[int] = None,
+        output_tokens: Optional[int] = None,
+        model: str = "claude-3-haiku-20240307"
+    ):
+        """
+        Track a summary generation for usage statistics
+        
+        Args:
+            chat_id: Telegram chat ID
+            user_id: Telegram user ID who requested the summary
+            message_count: Number of messages summarized
+            input_tokens: Number of input tokens used (if available)
+            output_tokens: Number of output tokens generated (if available)
+            model: Claude model used
+        """
+        if not self.enabled or not self.pool:
+            return
+        
+        try:
+            async with self.pool.acquire() as conn:
+                await conn.execute("""
+                    INSERT INTO summaries (chat_id, user_id, message_count, input_tokens, output_tokens, model)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                """, chat_id, user_id, message_count, input_tokens, output_tokens, model)
+                
+        except Exception as e:
+            logger.error(f"Error tracking summary: {e}")
+    
+    async def get_usage_stats(self, chat_id: int) -> Dict:
+        """
+        Get usage statistics for a chat
+        
+        Args:
+            chat_id: Telegram chat ID
+            
+        Returns:
+            Dictionary with usage statistics
+        """
+        if not self.enabled or not self.pool:
+            return {
+                'total_messages': 0,
+                'total_summaries': 0,
+                'total_input_tokens': 0,
+                'total_output_tokens': 0,
+                'oldest_message': None,
+                'newest_message': None,
+                'database_enabled': False
+            }
+        
+        try:
+            async with self.pool.acquire() as conn:
+                # Get message statistics
+                message_stats = await conn.fetchrow("""
+                    SELECT 
+                        COUNT(*) as total_messages,
+                        MIN(date) as oldest_message,
+                        MAX(date) as newest_message
+                    FROM messages
+                    WHERE chat_id = $1
+                """, chat_id)
+                
+                # Get summary statistics
+                summary_stats = await conn.fetchrow("""
+                    SELECT 
+                        COUNT(*) as total_summaries,
+                        COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+                        COALESCE(SUM(output_tokens), 0) as total_output_tokens,
+                        COALESCE(SUM(message_count), 0) as messages_summarized
+                    FROM summaries
+                    WHERE chat_id = $1
+                """, chat_id)
+                
+                return {
+                    'total_messages': message_stats['total_messages'] or 0,
+                    'total_summaries': summary_stats['total_summaries'] or 0,
+                    'total_input_tokens': int(summary_stats['total_input_tokens'] or 0),
+                    'total_output_tokens': int(summary_stats['total_output_tokens'] or 0),
+                    'messages_summarized': int(summary_stats['messages_summarized'] or 0),
+                    'oldest_message': message_stats['oldest_message'],
+                    'newest_message': message_stats['newest_message'],
+                    'database_enabled': True
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting usage stats: {e}")
+            return {
+                'total_messages': 0,
+                'total_summaries': 0,
+                'total_input_tokens': 0,
+                'total_output_tokens': 0,
+                'oldest_message': None,
+                'newest_message': None,
+                'database_enabled': False,
+                'error': str(e)
+            }
+    
+    async def get_global_usage_stats(self) -> Dict:
+        """
+        Get global usage statistics across all chats
+        
+        Returns:
+            Dictionary with global usage statistics
+        """
+        if not self.enabled or not self.pool:
+            return {
+                'total_messages': 0,
+                'total_summaries': 0,
+                'total_chats': 0,
+                'database_enabled': False
+            }
+        
+        try:
+            async with self.pool.acquire() as conn:
+                # Get global message statistics
+                message_stats = await conn.fetchrow("""
+                    SELECT 
+                        COUNT(*) as total_messages,
+                        COUNT(DISTINCT chat_id) as total_chats
+                    FROM messages
+                """)
+                
+                # Get global summary statistics
+                summary_stats = await conn.fetchrow("""
+                    SELECT 
+                        COUNT(*) as total_summaries,
+                        COALESCE(SUM(input_tokens), 0) as total_input_tokens,
+                        COALESCE(SUM(output_tokens), 0) as total_output_tokens
+                    FROM summaries
+                """)
+                
+                return {
+                    'total_messages': message_stats['total_messages'] or 0,
+                    'total_chats': message_stats['total_chats'] or 0,
+                    'total_summaries': summary_stats['total_summaries'] or 0,
+                    'total_input_tokens': int(summary_stats['total_input_tokens'] or 0),
+                    'total_output_tokens': int(summary_stats['total_output_tokens'] or 0),
+                    'database_enabled': True
+                }
+                
+        except Exception as e:
+            logger.error(f"Error getting global usage stats: {e}")
+            return {
+                'total_messages': 0,
+                'total_summaries': 0,
+                'total_chats': 0,
+                'database_enabled': False,
+                'error': str(e)
+            }
     
     async def close(self):
         """Close database connection pool"""

@@ -72,6 +72,7 @@ I can help summarize conversations in your group chats AND private chats!
 /start - Show this welcome message
 /help - Get help on how to use the bot
 /summarize - Get a summary of recent messages (works in both group and private chats)
+/usage - View usage statistics and estimated API costs
 
 **Example:**
 In groups: "@{} what did I miss?" or use /summarize
@@ -128,6 +129,11 @@ You can now specify custom timeframes for summaries!
 • Messages are stored in: {}
 • Summaries are in bullet point format for easy reading
 
+**Usage Tracking:**
+• Use `/usage` to view statistics and estimated API costs
+• Track total messages, summaries generated, and token usage
+• Monitor your API spending with cost estimates
+
 **Privacy:**
 • In groups: I only process messages when explicitly mentioned or commanded
 • In private: I only summarize when you use /summarize
@@ -141,6 +147,105 @@ Need more help? Contact the bot administrator.
     )
     
     await update.message.reply_text(help_message, parse_mode='Markdown')
+
+
+async def usage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /usage command to show usage statistics"""
+    try:
+        chat_id = update.effective_chat.id
+        chat_type = update.effective_chat.type
+        
+        # Send a "loading" message
+        status_message = await update.message.reply_text("📊 Gathering usage statistics...")
+        
+        # Get usage statistics
+        stats = await db_manager.get_usage_stats(chat_id)
+        
+        if not stats.get('database_enabled', False):
+            # Database not enabled - provide basic info
+            response = """
+⚠️ **Usage Tracking Not Available**
+
+Database storage is not enabled for this bot. Usage statistics require PostgreSQL database configuration.
+
+**Current Storage:** In-memory (last 100 messages)
+
+**To enable usage tracking:**
+1. Set up a PostgreSQL database
+2. Configure the `DATABASE_URL` environment variable
+3. Restart the bot
+
+For more information, contact the bot administrator.
+            """
+            await status_message.edit_text(response, parse_mode='Markdown')
+            return
+        
+        # Calculate costs based on Claude Haiku pricing
+        # Claude 3 Haiku pricing (as of 2024):
+        # Input: $0.25 per million tokens
+        # Output: $1.25 per million tokens
+        input_cost = (stats['total_input_tokens'] / 1_000_000) * 0.25
+        output_cost = (stats['total_output_tokens'] / 1_000_000) * 1.25
+        total_cost = input_cost + output_cost
+        
+        # Format dates
+        if stats['oldest_message']:
+            oldest_date = stats['oldest_message'].strftime('%Y-%m-%d %H:%M UTC')
+        else:
+            oldest_date = "N/A"
+        
+        if stats['newest_message']:
+            newest_date = stats['newest_message'].strftime('%Y-%m-%d %H:%M UTC')
+        else:
+            newest_date = "N/A"
+        
+        # Determine chat type for display
+        if chat_type == 'private':
+            chat_type_display = "Private Chat"
+        elif chat_type == 'group':
+            chat_type_display = "Group Chat"
+        elif chat_type == 'supergroup':
+            chat_type_display = "Supergroup"
+        else:
+            chat_type_display = chat_type.title()
+        
+        # Build comprehensive response
+        response = f"""
+📊 **Usage Statistics for {chat_type_display}**
+
+**📨 Message Statistics:**
+• Total Messages Stored: **{stats['total_messages']:,}**
+• Messages Summarized: **{stats.get('messages_summarized', 0):,}**
+• Oldest Message: {oldest_date}
+• Newest Message: {newest_date}
+
+**🤖 Summary Statistics:**
+• Total Summaries Generated: **{stats['total_summaries']:,}**
+• Input Tokens Used: **{stats['total_input_tokens']:,}**
+• Output Tokens Generated: **{stats['total_output_tokens']:,}**
+• Total Tokens: **{stats['total_input_tokens'] + stats['total_output_tokens']:,}**
+
+**💰 Estimated API Costs (Claude Haiku):**
+• Input Cost: **${input_cost:.4f}**
+• Output Cost: **${output_cost:.4f}**
+• **Total Estimated Cost: ${total_cost:.4f}**
+
+**💡 Cost Breakdown:**
+• Input: $0.25 per million tokens
+• Output: $1.25 per million tokens
+
+**📝 Note:** These are estimates based on Claude 3 Haiku pricing. Actual costs may vary depending on the model used and current Anthropic pricing.
+
+Use /help to see available commands.
+        """
+        
+        await status_message.edit_text(response.strip(), parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error in usage command: {e}")
+        await update.message.reply_text(
+            f"❌ Sorry, I encountered an error while fetching usage statistics:\n\n{str(e)}\n\nPlease try again later."
+        )
 
 
 async def fetch_recent_messages(
@@ -206,7 +311,7 @@ def format_messages_for_summary(messages: List[dict]) -> str:
     return "\n".join(formatted)
 
 
-async def generate_summary(messages_text: str) -> str:
+async def generate_summary(messages_text: str) -> tuple:
     """
     Generate a summary using Claude API (Anthropic)
     
@@ -214,7 +319,7 @@ async def generate_summary(messages_text: str) -> str:
         messages_text: Formatted string of messages to summarize
     
     Returns:
-        AI-generated summary in bullet point format
+        Tuple of (summary_text, input_tokens, output_tokens, model_name)
     """
     # Determine which model to use
     # IMPORTANT: Use claude-3-haiku-20240307 as the default (most basic and universally available)
@@ -224,7 +329,7 @@ async def generate_summary(messages_text: str) -> str:
     
     try:
         if not messages_text or messages_text == "No messages available to summarize.":
-            return "⚠️ No recent messages available to summarize. I can only summarize messages that I've seen since being added to the group."
+            return ("⚠️ No recent messages available to summarize. I can only summarize messages that I've seen since being added to the group.", 0, 0, model_name)
         
         # Create the prompt for Claude
         prompt = f"""Summarize these messages in a casual, friendly way like you're catching me up. What'd I miss?
@@ -264,7 +369,12 @@ Messages:
         )
         
         summary = response.content[0].text.strip()
-        return summary
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        
+        logger.info(f"Summary generated - Input tokens: {input_tokens}, Output tokens: {output_tokens}")
+        
+        return (summary, input_tokens, output_tokens, model_name)
         
     except Exception as e:
         error_msg = f"Error generating summary with model '{model_name}': {e}"
@@ -344,7 +454,7 @@ Messages:
             detailed_error += "3. Confirm Anthropic API is operational: https://status.anthropic.com/\n"
             detailed_error += "4. Try redeploying your bot\n"
         
-        return detailed_error
+        return (detailed_error, 0, 0, model_name)
 
 
 # Store recent messages in memory (in production, use a database)
@@ -619,7 +729,18 @@ async def handle_summary_request(
         messages_text = format_messages_for_summary(messages)
         
         # Generate summary
-        summary = await generate_summary(messages_text)
+        summary, input_tokens, output_tokens, model_name = await generate_summary(messages_text)
+        
+        # Track summary in database
+        user_id = update.message.from_user.id if update.message.from_user else None
+        await db_manager.track_summary(
+            chat_id=chat_id,
+            user_id=user_id,
+            message_count=len(messages),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            model=model_name
+        )
         
         # Send the summary with appropriate context
         if start_time is not None:
@@ -677,6 +798,7 @@ def main():
     # Register command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("usage", usage_command))
     application.add_handler(CommandHandler("summary", summary_command))
     application.add_handler(CommandHandler("summarize", summary_command))  # Also support /summarize
     
