@@ -18,6 +18,11 @@ A smart Telegram bot that automatically summarizes conversations using AI in **b
 - 📅 **Custom Timeframe Filtering**: Summarize messages from specific time periods
   - Relative timeframes: "last 2 hours", "today", "yesterday"
   - Absolute date ranges: "from 2024-01-15 to 2024-01-20", "on 2024-01-15"
+- 💰 **Budget Protection & Cost Tracking**: Built-in monthly budget enforcement with automatic tracking
+  - Set budget limits to prevent unexpected charges
+  - Real-time usage monitoring with `/usage` command
+  - Automatic alerts at 50%, 75%, and 90% of budget
+  - Monthly auto-reset on the 1st of each month
 - 🔒 **Privacy Focused**: Only processes messages when explicitly requested
 - 🌍 **24/7 Availability**: Runs continuously on cloud platforms
 - 👥 **Multi-Chat Support**: Use the same bot across multiple groups and private conversations
@@ -175,6 +180,8 @@ This will summarize the last 30 messages of your private conversation.
 | `CLAUDE_MODEL` | No | `claude-3-haiku-20240307` | Claude model to use (see options below) |
 | `MESSAGE_LIMIT` | No | `75` | Maximum number of messages to summarize |
 | `MAX_MESSAGE_AGE_HOURS` | No | `24` | Only summarize messages within this timeframe |
+| `MONTHLY_BUDGET` | No | `10.0` | Monthly API budget limit in USD (default: $10) |
+| `ADMIN_USER_ID` | No | - | Your Telegram user ID for budget notifications |
 
 **Available Claude Models (in order of accessibility):**
 - `claude-3-haiku-20240307` ⭐ **DEFAULT - Works for ALL API tiers** (fastest and most cost-effective)
@@ -220,6 +227,111 @@ The bot supports PostgreSQL for persistent message storage, allowing you to:
 - Bot will use in-memory storage (last 100 messages only)
 - Custom timeframe filtering will work but only for messages in memory
 - History is lost on bot restart
+
+### Budget Management & Cost Tracking 💰
+
+The bot includes a comprehensive cost tracking system to help you monitor and control API spending:
+
+**🎯 Features:**
+
+1. **Automatic Cost Tracking**
+   - Tracks every API call with precise token usage
+   - Uses Claude 3 Haiku pricing:
+     - Input tokens: $0.25 per million
+     - Output tokens: $1.25 per million
+   - Stores usage data persistently in `cost_data.json`
+
+2. **Budget Enforcement**
+   - Hard limit: $10/month by default (configurable)
+   - Prevents API calls when budget is exceeded
+   - Shows clear error messages with reset date
+   - Automatically resets on the 1st of each month
+
+3. **Admin Notifications**
+   - Sends alerts at 50%, 75%, and 90% of budget
+   - Includes detailed usage statistics
+   - Shows remaining budget and days until reset
+
+4. **Usage Commands**
+   - `/usage` - Check current month's spending and budget status
+   - `/resetusage` - Manually reset usage (admin only)
+
+**📊 Setting Up Budget Tracking:**
+
+1. **Set Monthly Budget (Optional):**
+   ```
+   MONTHLY_BUDGET=10.0
+   ```
+   Default is $10/month. Adjust based on your needs.
+
+2. **Enable Admin Notifications (Highly Recommended):**
+   
+   To receive budget warnings, you need to set your Telegram user ID:
+   
+   **Finding Your User ID:**
+   - Method 1: Use [@userinfobot](https://t.me/userinfobot) on Telegram
+   - Method 2: Send any message to your bot and check the logs
+   - Method 3: Use [@getidsbot](https://t.me/getidsbot)
+   
+   Then set it as an environment variable:
+   ```
+   ADMIN_USER_ID=123456789
+   ```
+
+3. **Deploy and Start Using:**
+   - Cost tracking is automatic - no additional setup needed
+   - Use `/usage` anytime to check your spending
+   - You'll receive DMs when hitting 50%, 75%, and 90% of budget
+
+**📈 Example Usage Output:**
+
+```
+📊 Monthly Budget Usage Report
+
+Period: 2024-10
+Status: 🟢 HEALTHY
+
+💰 Budget:
+• Spent: $2.4567
+• Limit: $10.00
+• Remaining: $7.5433
+• Used: 24.6%
+
+[████░░░░░░░░░░░░░░░░] 24.6%
+
+🔢 Token Usage:
+• Input: 98,234 tokens ($0.024559)
+• Output: 45,678 tokens ($0.057098)
+• Total: 143,912 tokens
+
+📈 Activity:
+• API requests: 156
+• Avg cost/request: $0.015748
+
+⏰ Budget resets in 8 day(s)
+```
+
+**🚨 Budget Limit Reached:**
+
+When you hit the monthly limit, users will see:
+
+```
+🚫 Monthly Budget Limit Reached
+
+Current spending: $10.0234
+Monthly budget: $10.00
+Budget resets in 5 day(s) (on the 1st of next month)
+
+Please check back after the reset or contact the bot administrator.
+```
+
+**💡 Tips:**
+
+- Start with the default $10/month budget and adjust as needed
+- Set up `ADMIN_USER_ID` to receive proactive alerts
+- Check `/usage` regularly to monitor spending
+- Use `/resetusage` only if needed (usage auto-resets monthly)
+- With Haiku model, $10 covers ~2,000-5,000 summaries per month
 
 ### Customization
 
@@ -293,6 +405,18 @@ You can customize the bot's behavior by editing `bot.py`:
 
 **Total Monthly Cost**: $0-5 for typical usage with Haiku (small-medium groups, ~500-1000 summaries/month)
 
+### 🛡️ Built-in Budget Protection
+
+The bot includes automatic cost tracking and budget enforcement:
+- **Default Budget**: $10/month (configurable via `MONTHLY_BUDGET`)
+- **Automatic Tracking**: Every API call is tracked with precise token usage
+- **Hard Limit**: Bot stops making API calls when budget is exceeded
+- **Proactive Alerts**: Get notifications at 50%, 75%, and 90% of budget
+- **Monthly Reset**: Budget automatically resets on the 1st of each month
+- **Usage Monitoring**: Use `/usage` command anytime to check spending
+
+This ensures you never have surprise charges and stay within your planned budget!
+
 ## 🔒 Privacy & Security
 
 - **Optional database storage**: You control whether messages are stored persistently
@@ -342,6 +466,8 @@ telegram-summarizer-bot/
 ├── bot.py                    # Main bot application
 ├── database.py               # PostgreSQL database module
 ├── timeframe_parser.py       # Timeframe parsing module
+├── cost_tracker.py           # Cost tracking and budget enforcement
+├── cost_data.json            # Persistent cost tracking data (auto-generated)
 ├── requirements.txt          # Python dependencies
 ├── .env.example             # Environment variables template
 ├── Procfile                 # Railway/Heroku deployment
@@ -361,6 +487,8 @@ telegram-summarizer-bot/
 | `/summarize` or `/summary` | Get a summary of recent messages (works in both group and private chats) |
 | `/summarize <number>` | Get a summary of the last \<number\> messages (e.g., `/summarize 50`) |
 | `/summarize <timeframe>` | Get a summary for a specific timeframe (e.g., `/summarize today`) |
+| `/usage` | Check current month's API usage and budget status |
+| `/resetusage` | Manually reset usage statistics (admin only - requires ADMIN_USER_ID) |
 
 **Supported Timeframes:**
 - Relative: `today`, `yesterday`, `last X hours`, `last X days`, `last X weeks`
@@ -572,6 +700,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 Recent additions:
 - [x] PostgreSQL database support for persistent storage
 - [x] Custom timeframe filtering (relative and absolute dates)
+- [x] Budget tracking and cost enforcement system
 
 Future improvements planned:
 - [ ] Support for multiple languages

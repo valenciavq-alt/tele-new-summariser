@@ -28,6 +28,9 @@ from anthropic import Anthropic
 from database import db_manager
 from timeframe_parser import TimeframeParser, parse_timeframe
 
+# Import cost tracker module
+from cost_tracker import initialize_cost_tracker, get_cost_tracker
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -41,6 +44,10 @@ anthropic_client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
 # Configuration
 MESSAGE_LIMIT = int(os.getenv('MESSAGE_LIMIT', '75'))  # Number of messages to summarize
 MAX_MESSAGE_AGE_HOURS = int(os.getenv('MAX_MESSAGE_AGE_HOURS', '24'))  # Only summarize recent messages
+
+# Admin configuration for cost tracking notifications
+# Set ADMIN_USER_ID in environment to receive budget warnings
+ADMIN_USER_ID = os.getenv('ADMIN_USER_ID')  # Your Telegram user ID
 
 
 def get_bot_username():
@@ -72,6 +79,7 @@ I can help summarize conversations in your group chats AND private chats!
 /start - Show this welcome message
 /help - Get help on how to use the bot
 /summarize - Get a summary of recent messages (works in both group and private chats)
+/usage - Check current API usage and budget status
 
 **Example:**
 In groups: "@{} what did I miss?" or use /summarize
@@ -132,6 +140,11 @@ You can now specify custom timeframes for summaries!
 • In groups: I only process messages when explicitly mentioned or commanded
 • In private: I only summarize when you use /summarize
 • All summaries are processed in real-time with Claude AI
+
+**Budget & Usage:**
+• Use `/usage` to check current API usage and budget
+• The bot has a monthly budget limit to control costs
+• Budget automatically resets on the 1st of each month
 
 Need more help? Contact the bot administrator.
     """.format(
@@ -206,12 +219,13 @@ def format_messages_for_summary(messages: List[dict]) -> str:
     return "\n".join(formatted)
 
 
-async def generate_summary(messages_text: str) -> str:
+async def generate_summary(messages_text: str, context: ContextTypes.DEFAULT_TYPE = None) -> str:
     """
     Generate a summary using Claude API (Anthropic)
     
     Args:
         messages_text: Formatted string of messages to summarize
+        context: Telegram context for sending admin notifications (optional)
     
     Returns:
         AI-generated summary in bullet point format
@@ -225,6 +239,14 @@ async def generate_summary(messages_text: str) -> str:
     try:
         if not messages_text or messages_text == "No messages available to summarize.":
             return "⚠️ No recent messages available to summarize. I can only summarize messages that I've seen since being added to the group."
+        
+        # Check budget before making API call
+        tracker = get_cost_tracker()
+        if tracker:
+            can_proceed, error_msg = tracker.can_make_request(estimated_tokens=2000)
+            if not can_proceed:
+                logger.warning("Budget limit reached, blocking API request")
+                return error_msg
         
         # Create the prompt for Claude
         prompt = f"""Summarize these messages in a casual, friendly way like you're catching me up. What'd I miss?
@@ -264,6 +286,29 @@ Messages:
         )
         
         summary = response.content[0].text.strip()
+        
+        # Track the cost after successful API call
+        if tracker:
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+            
+            cost_info = tracker.track_request(input_tokens, output_tokens)
+            logger.info(f"Cost tracked: ${cost_info['request_cost']:.6f} (Total: ${cost_info['total_cost']:.4f}, {cost_info['budget_used_pct']:.1f}% of budget)")
+            
+            # Check if we've crossed any warning thresholds
+            warning = tracker.check_warning_thresholds()
+            if warning and context and ADMIN_USER_ID:
+                try:
+                    # Send warning to admin
+                    await context.bot.send_message(
+                        chat_id=int(ADMIN_USER_ID),
+                        text=warning['message'],
+                        parse_mode='Markdown'
+                    )
+                    logger.info(f"Sent {warning['threshold']}% budget warning to admin")
+                except Exception as e:
+                    logger.error(f"Failed to send budget warning to admin: {e}")
+        
         return summary
         
     except Exception as e:
@@ -618,8 +663,8 @@ async def handle_summary_request(
         # Format messages
         messages_text = format_messages_for_summary(messages)
         
-        # Generate summary
-        summary = await generate_summary(messages_text)
+        # Generate summary (pass context for admin notifications)
+        summary = await generate_summary(messages_text, context)
         
         # Send the summary with appropriate context
         if start_time is not None:
@@ -642,6 +687,84 @@ async def handle_summary_request(
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle all messages to store them"""
     await store_message(update)
+
+
+async def usage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /usage command - show current month's spending"""
+    try:
+        tracker = get_cost_tracker()
+        if not tracker:
+            await update.message.reply_text(
+                "❌ Cost tracking is not enabled.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Get formatted usage message
+        usage_msg = tracker.get_formatted_usage_message()
+        
+        await update.message.reply_text(usage_msg, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error handling /usage command: {e}")
+        await update.message.reply_text(
+            f"❌ Error retrieving usage statistics: {str(e)}"
+        )
+
+
+async def resetusage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /resetusage command - manually reset usage (admin only)"""
+    try:
+        # Check if user is admin
+        user_id = update.effective_user.id
+        
+        if not ADMIN_USER_ID:
+            await update.message.reply_text(
+                "❌ Admin user not configured. Set ADMIN_USER_ID environment variable.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        if str(user_id) != str(ADMIN_USER_ID):
+            await update.message.reply_text(
+                "🚫 Unauthorized. This command is only available to the bot administrator.",
+                parse_mode='Markdown'
+            )
+            logger.warning(f"Unauthorized /resetusage attempt by user {user_id}")
+            return
+        
+        tracker = get_cost_tracker()
+        if not tracker:
+            await update.message.reply_text(
+                "❌ Cost tracking is not enabled.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Reset usage
+        previous_stats = tracker.reset_usage()
+        
+        msg = (
+            f"✅ **Usage Reset Complete**\n\n"
+            f"**Previous Month Statistics:**\n"
+            f"• Period: {previous_stats['month']}\n"
+            f"• Total cost: ${previous_stats['total_cost']:.4f}\n"
+            f"• Input tokens: {previous_stats['input_tokens']:,}\n"
+            f"• Output tokens: {previous_stats['output_tokens']:,}\n"
+            f"• Requests: {previous_stats['request_count']}\n\n"
+            f"**Current Month:**\n"
+            f"• All counters have been reset to zero\n"
+            f"• Fresh budget of ${tracker.monthly_budget:.2f} available"
+        )
+        
+        await update.message.reply_text(msg, parse_mode='Markdown')
+        logger.info(f"Usage manually reset by admin (user {user_id})")
+        
+    except Exception as e:
+        logger.error(f"Error handling /resetusage command: {e}")
+        await update.message.reply_text(
+            f"❌ Error resetting usage: {str(e)}"
+        )
 
 
 async def initialize_database():
@@ -671,6 +794,17 @@ def main():
     else:
         logger.info("ℹ️ Database not configured - using in-memory storage (last 100 messages)")
     
+    # Initialize cost tracker
+    logger.info("Initializing cost tracking system...")
+    monthly_budget = float(os.getenv('MONTHLY_BUDGET', '10.0'))
+    initialize_cost_tracker(monthly_budget=monthly_budget)
+    logger.info(f"✅ Cost tracking enabled with ${monthly_budget:.2f} monthly budget")
+    
+    if ADMIN_USER_ID:
+        logger.info(f"✅ Admin notifications enabled for user ID: {ADMIN_USER_ID}")
+    else:
+        logger.warning("⚠️ ADMIN_USER_ID not set - budget warnings will not be sent")
+    
     # Create the Application
     application = Application.builder().token(telegram_token).build()
     
@@ -679,6 +813,8 @@ def main():
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("summary", summary_command))
     application.add_handler(CommandHandler("summarize", summary_command))  # Also support /summarize
+    application.add_handler(CommandHandler("usage", usage_command))
+    application.add_handler(CommandHandler("resetusage", resetusage_command))
     
     # Register handler for mentions (when bot is tagged)
     application.add_handler(MessageHandler(
