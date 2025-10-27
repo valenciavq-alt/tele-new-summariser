@@ -19,7 +19,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from openai import OpenAI
+from anthropic import Anthropic
 
 # Configure logging
 logging.basicConfig(
@@ -28,8 +28,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize OpenAI client
-openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+# Initialize Anthropic client
+anthropic_client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
 
 # Configuration
 MESSAGE_LIMIT = int(os.getenv('MESSAGE_LIMIT', '75'))  # Number of messages to summarize
@@ -170,7 +170,7 @@ def format_messages_for_summary(messages: List[dict]) -> str:
 
 async def generate_summary(messages_text: str) -> str:
     """
-    Generate a summary using OpenAI API
+    Generate a summary using Claude API (Anthropic)
     
     Args:
         messages_text: Formatted string of messages to summarize
@@ -182,7 +182,7 @@ async def generate_summary(messages_text: str) -> str:
         if not messages_text or messages_text == "No messages available to summarize.":
             return "⚠️ No recent messages available to summarize. I can only summarize messages that I've seen since being added to the group."
         
-        # Create the prompt for OpenAI
+        # Create the prompt for Claude
         prompt = f"""You are a helpful assistant that summarizes Telegram group chat conversations.
 
 Please analyze the following chat messages and create a concise summary in bullet point format.
@@ -200,18 +200,17 @@ Chat messages:
 Please provide a brief summary in bullet points (maximum 8 points). Start with "📝 Summary:"
 """
         
-        # Call OpenAI API
-        response = openai_client.chat.completions.create(
-            model=os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo'),
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that summarizes group chat conversations in clear, concise bullet points."},
-                {"role": "user", "content": prompt}
-            ],
+        # Call Claude API
+        response = anthropic_client.messages.create(
+            model=os.getenv('CLAUDE_MODEL', 'claude-3-5-sonnet-20241022'),
             max_tokens=500,
             temperature=0.7,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
         )
         
-        summary = response.choices[0].message.content.strip()
+        summary = response.content[0].text.strip()
         return summary
         
     except Exception as e:
@@ -341,9 +340,9 @@ def main():
         logger.error("TELEGRAM_BOT_TOKEN not found in environment variables!")
         raise ValueError("TELEGRAM_BOT_TOKEN is required")
     
-    if not os.getenv('OPENAI_API_KEY'):
-        logger.error("OPENAI_API_KEY not found in environment variables!")
-        raise ValueError("OPENAI_API_KEY is required")
+    if not os.getenv('ANTHROPIC_API_KEY'):
+        logger.error("ANTHROPIC_API_KEY not found in environment variables!")
+        raise ValueError("ANTHROPIC_API_KEY is required")
     
     # Create the Application
     application = Application.builder().token(telegram_token).build()

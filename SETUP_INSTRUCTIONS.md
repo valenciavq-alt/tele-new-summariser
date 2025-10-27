@@ -8,7 +8,7 @@ Welcome! This guide will help you set up your own Telegram bot that summarizes g
 
 1. [What You'll Need](#what-youll-need)
 2. [Step 1: Create Your Telegram Bot](#step-1-create-your-telegram-bot)
-3. [Step 2: Get Your OpenAI API Key](#step-2-get-your-openai-api-key)
+3. [Step 2: Get Your Anthropic API Key](#step-2-get-your-anthropic-api-key)
 4. [Step 3: Upload Your Bot Code to GitHub](#step-3-upload-your-bot-code-to-github)
 5. [Step 4: Deploy Your Bot (Choose One)](#step-4-deploy-your-bot)
    - [Option A: Deploy on Railway (Recommended)](#option-a-deploy-on-railway-recommended)
@@ -26,7 +26,7 @@ Before starting, make sure you have:
 
 - ✅ A Telegram account
 - ✅ A GitHub account (free - sign up at [github.com](https://github.com))
-- ✅ An OpenAI account (you'll need to add payment details, but costs are very low - typically $0.01-0.05 per summary)
+- ✅ An Anthropic account (you'll need to add payment details, but costs are very low - typically $0.01-0.05 per summary)
 - ✅ About 30-45 minutes of time
 - ✅ This bot code (you already have it!)
 
@@ -34,7 +34,7 @@ Before starting, make sure you have:
 - Telegram Bot: **FREE** ✨
 - GitHub: **FREE** ✨
 - Railway/Render: **FREE** tier available (sufficient for most users) ✨
-- OpenAI API: Pay-as-you-go (approximately $0.002-0.005 per summary with GPT-3.5-turbo)
+- Anthropic API: Pay-as-you-go (approximately $0.003-0.015 per summary with Claude 3.5 Sonnet)
 
 ---
 
@@ -104,13 +104,13 @@ Send these commands to BotFather to set up your bot:
 
 ---
 
-## Step 2: Get Your OpenAI API Key
+## Step 2: Get Your Anthropic API Key
 
-OpenAI provides the AI that creates the summaries. You'll need an API key.
+Anthropic provides the Claude AI that creates the summaries. You'll need an API key.
 
-### 2.1 Create an OpenAI Account
+### 2.1 Create an Anthropic Account
 
-1. Go to [https://platform.openai.com/signup](https://platform.openai.com/signup)
+1. Go to [https://console.anthropic.com/](https://console.anthropic.com/)
 2. Click **Sign up** and create your account
 3. Verify your email address
 4. Log in to your account
@@ -118,31 +118,31 @@ OpenAI provides the AI that creates the summaries. You'll need an API key.
 ### 2.2 Add Payment Information
 
 1. After logging in, you'll see a message about adding payment details
-2. Click on your profile icon (top right corner)
+2. Click on your profile icon or settings (top right corner)
 3. Go to **Billing** → **Payment methods**
 4. Click **Add payment method**
 5. Enter your credit/debit card information
 
 **💰 Important Notes About Costs:**
-- OpenAI charges pay-as-you-go (you only pay for what you use)
-- GPT-3.5-turbo costs approximately $0.002 per summary
-- Example: 100 summaries = approximately $0.20
+- Anthropic charges pay-as-you-go (you only pay for what you use)
+- Claude 3.5 Sonnet costs approximately $0.003-0.015 per summary
+- Example: 100 summaries = approximately $0.30-1.50
 - You can set spending limits in the Billing section
 - Recommended: Set a limit of $5-10/month to start
 
 ### 2.3 Get Your API Key
 
-1. Click on your profile icon (top right)
-2. Select **API keys**
-3. Click **+ Create new secret key**
+1. Click on your profile icon or settings (top right)
+2. Select **API Keys**
+3. Click **+ Create Key**
 4. Give it a name (e.g., "Telegram Bot")
-5. Click **Create secret key**
+5. Click **Create Key**
 6. **IMPORTANT:** Copy the key immediately - you won't be able to see it again!
-   - It looks like: `sk-proj-abcdefghijklmnopqrstuvwxyz1234567890...`
+   - It looks like: `sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890...`
 7. Save it in your "bot-credentials.txt" file
 
 **✅ Step 2 Complete!** You now have:
-- OpenAI account
+- Anthropic account
 - API Key (saved safely)
 - Payment method added
 
@@ -233,7 +233,7 @@ Railway is beginner-friendly and offers a generous free tier.
 
 ### 4.3 Add Environment Variables
 
-This is where you'll add your Bot Token and OpenAI API Key!
+This is where you'll add your Bot Token and Anthropic API Key!
 
 1. Click on your deployed service
 2. Go to the **Variables** tab
@@ -249,12 +249,12 @@ This is where you'll add your Bot Token and OpenAI API Key!
    - Example: If your bot is @MySummarizerBot, enter: MySummarizerBot
 
    **Variable 3:**
-   - Key: `OPENAI_API_KEY`
-   - Value: [Paste your OpenAI API key from Step 2]
+   - Key: `ANTHROPIC_API_KEY`
+   - Value: [Paste your Anthropic API key from Step 2]
 
    **Variable 4 (Optional):**
-   - Key: `OPENAI_MODEL`
-   - Value: `gpt-3.5-turbo`
+   - Key: `CLAUDE_MODEL`
+   - Value: `claude-3-5-sonnet-20241022`
 
    **Variable 5 (Optional):**
    - Key: `MESSAGE_LIMIT`
@@ -335,12 +335,12 @@ Scroll down to the **Environment Variables** section:
    - Value: [Your bot username WITHOUT the @ symbol]
 
    **Variable 3:**
-   - Key: `OPENAI_API_KEY`
-   - Value: [Paste your OpenAI API key from Step 2]
+   - Key: `ANTHROPIC_API_KEY`
+   - Value: [Paste your Anthropic API key from Step 2]
 
    **Variable 4:**
-   - Key: `OPENAI_MODEL`
-   - Value: `gpt-3.5-turbo`
+   - Key: `CLAUDE_MODEL`
+   - Value: `claude-3-5-sonnet-20241022`
 
    **Variable 5:**
    - Key: `MESSAGE_LIMIT`
@@ -506,19 +506,19 @@ Reply to any message in the group and mention the bot:
 
 **Possible Causes:**
 
-1. **OpenAI API Key Issue:**
+1. **Anthropic API Key Issue:**
    - Check if your API key is correct
-   - Verify you have credits/payment method on OpenAI
-   - Check OpenAI usage limits
+   - Verify you have credits/payment method on Anthropic
+   - Check Anthropic usage limits
 
-2. **Check OpenAI Account:**
-   - Log in to [platform.openai.com](https://platform.openai.com)
+2. **Check Anthropic Account:**
+   - Log in to [console.anthropic.com](https://console.anthropic.com)
    - Go to Billing → Usage
    - Make sure you have available credits
    - Check if your API key is active
 
 3. **API Rate Limits:**
-   - If many people use the bot at once, OpenAI might rate-limit you
+   - If many people use the bot at once, Anthropic might rate-limit you
    - Wait a few minutes and try again
 
 ### Problem: Bot stopped working after a few days
@@ -533,8 +533,8 @@ Reply to any message in the group and mention the bot:
    - Free tier services sleep after inactivity
    - Just mention the bot again - it will wake up
 
-3. **OpenAI credits depleted:**
-   - Add more credits to your OpenAI account
+3. **Anthropic credits depleted:**
+   - Add more credits to your Anthropic account
 
 ### Problem: "TELEGRAM_BOT_TOKEN not found" error in logs
 
@@ -561,7 +561,7 @@ Reply to any message in the group and mention the bot:
 
 1. Check the logs first - they usually show what's wrong
 2. Verify all environment variables are set correctly
-3. Make sure your OpenAI account has available credits
+3. Make sure your Anthropic account has available credits
 4. Restart the service on Railway/Render
 5. Check that your bot has admin privileges in the group
 
@@ -572,9 +572,9 @@ Reply to any message in the group and mention the bot:
 ### How much does it cost to run this bot?
 
 **Hosting:** Free (Railway/Render free tiers)
-**OpenAI API:** Approximately $0.002-0.005 per summary
-- 100 summaries ≈ $0.20-0.50
-- 1000 summaries ≈ $2-5
+**Anthropic API:** Approximately $0.003-0.015 per summary
+- 100 summaries ≈ $0.30-1.50
+- 1000 summaries ≈ $3-15
 
 ### Can I use this bot in multiple groups?
 
@@ -588,8 +588,8 @@ By default, it summarizes the last 75 messages from the past 24 hours. You can c
 
 ### Is my chat data private?
 
-- Your messages are sent to OpenAI's API for summarization
-- OpenAI's data policy: [https://openai.com/policies/api-data-usage-policies](https://openai.com/policies/api-data-usage-policies)
+- Your messages are sent to Anthropic's API for summarization
+- Anthropic's data policy: [https://www.anthropic.com/legal/privacy](https://www.anthropic.com/legal/privacy)
 - The bot doesn't store messages permanently (only keeps last 100 in memory)
 - For sensitive conversations, consider this before using
 
@@ -611,12 +611,13 @@ Yes! Edit the `bot.py` file and modify the prompt in the `generate_summary()` fu
    - Click **Commit changes**
 3. Railway/Render will automatically detect changes and redeploy
 
-### Can I use GPT-4 instead of GPT-3.5?
+### Can I use different Claude models?
 
-Yes! Just change the `OPENAI_MODEL` environment variable to `gpt-4`. Note:
-- GPT-4 is more expensive (about 15-30x the cost)
-- GPT-4 provides higher quality summaries
-- GPT-3.5-turbo is usually sufficient for most use cases
+Yes! Just change the `CLAUDE_MODEL` environment variable. Options include:
+- `claude-3-5-sonnet-20241022` (default, best balance of speed and quality)
+- `claude-3-opus-20240229` (highest quality, more expensive)
+- `claude-3-sonnet-20240229` (faster, more economical)
+Note: Claude 3.5 Sonnet is usually the best choice for most use cases
 
 ### How do I stop the bot?
 
@@ -653,7 +654,7 @@ Unfortunately, tokens can't be recovered. But you can generate a new one:
 
 - Check the logs in your Railway/Render dashboard
 - Review the Troubleshooting section above
-- Check OpenAI status: [https://status.openai.com](https://status.openai.com)
+- Check Anthropic status: [https://status.anthropic.com](https://status.anthropic.com)
 - Check Telegram Bot API status: [https://telegram.org](https://telegram.org)
 
 ---
@@ -673,11 +674,11 @@ Enjoy using your bot! 🚀
 ---
 
 **Pro Tips:**
-- Set a monthly spending limit on OpenAI to control costs
+- Set a monthly spending limit on Anthropic to control costs
 - Monitor your Railway/Render usage to stay within free tier
 - Keep your tokens and API keys secure - never share them!
 - Read your deployment logs regularly to catch issues early
 
 ---
 
-*Last updated: October 2024*
+*Last updated: October 2025*

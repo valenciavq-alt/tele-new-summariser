@@ -1,8 +1,8 @@
 # Telegram Bot Library
 python-telegram-bot==20.7
 
-# OpenAI API for AI-powered summaries
-openai==1.3.0
+# Anthropic API for AI-powered summaries
+anthropic==0.39.0
 
 # Additional dependencies
 python-dotenv==1.0.0

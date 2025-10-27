@@ -8,7 +8,7 @@ A smart Telegram bot that automatically summarizes group chat conversations usin
 
 ## ✨ Features
 
-- 🔍 **Smart Summarization**: Uses OpenAI's GPT models to create intelligent summaries
+- 🔍 **Smart Summarization**: Uses Anthropic's Claude models to create intelligent summaries
 - 💬 **Group Chat Support**: Works seamlessly in any Telegram group
 - 📝 **Bullet Point Format**: Easy-to-read summaries with key highlights
 - ⚡ **Real-time Processing**: Get summaries instantly when you need them
@@ -31,7 +31,7 @@ A smart Telegram bot that automatically summarizes group chat conversations usin
 
 - Python 3.11+
 - Telegram account
-- OpenAI API key
+- Anthropic API key
 - GitHub account (for deployment)
 - Railway or Render account (free tier available)
 
@@ -51,7 +51,7 @@ A smart Telegram bot that automatically summarizes group chat conversations usin
 2. Add your environment variables:
    - `TELEGRAM_BOT_TOKEN`
    - `BOT_USERNAME`
-   - `OPENAI_API_KEY`
+   - `ANTHROPIC_API_KEY`
 3. Deploy!
 
 #### Deploy on Render
@@ -109,10 +109,15 @@ Reply to any message and mention the bot.
 |----------|----------|---------|-------------|
 | `TELEGRAM_BOT_TOKEN` | Yes | - | Your Telegram bot token from BotFather |
 | `BOT_USERNAME` | Yes | - | Your bot's username (without @) |
-| `OPENAI_API_KEY` | Yes | - | Your OpenAI API key |
-| `OPENAI_MODEL` | No | `gpt-3.5-turbo` | OpenAI model to use (`gpt-3.5-turbo` or `gpt-4`) |
+| `ANTHROPIC_API_KEY` | Yes | - | Your Anthropic API key |
+| `CLAUDE_MODEL` | No | `claude-3-5-sonnet-20241022` | Claude model to use (see options below) |
 | `MESSAGE_LIMIT` | No | `75` | Maximum number of messages to summarize |
 | `MAX_MESSAGE_AGE_HOURS` | No | `24` | Only summarize messages within this timeframe |
+
+**Available Claude Models:**
+- `claude-3-5-sonnet-20241022` (recommended - best balance)
+- `claude-3-opus-20240229` (highest quality)
+- `claude-3-sonnet-20240229` (faster, more economical)
 
 ### Customization
 
@@ -144,8 +149,8 @@ You can customize the bot's behavior by editing `bot.py`:
        │ Formats & sends to AI
        ▼
 ┌─────────────┐
-│  OpenAI API │
-│  (GPT-3.5)  │
+│Anthropic API│
+│  (Claude)   │
 └──────┬──────┘
        │ Returns summary
        ▼
@@ -161,23 +166,24 @@ You can customize the bot's behavior by editing `bot.py`:
 - **Railway**: Free tier includes $5 credit/month (sufficient for most users)
 - **Render**: Free tier includes 750 hours/month (24/7 operation)
 
-### OpenAI API
-- **GPT-3.5-turbo**: ~$0.002-0.005 per summary
-  - 100 summaries ≈ $0.20-0.50
-  - 1000 summaries ≈ $2-5
-- **GPT-4**: ~$0.03-0.06 per summary (higher quality, more expensive)
+### Anthropic API
+- **Claude 3.5 Sonnet**: ~$0.003-0.015 per summary
+  - 100 summaries ≈ $0.30-1.50
+  - 1000 summaries ≈ $3-15
+- **Claude 3 Opus**: ~$0.015-0.075 per summary (highest quality, more expensive)
+- **Claude 3 Sonnet**: ~$0.003-0.015 per summary (faster, more economical)
 
-**Total Monthly Cost**: $0-10 for typical usage (small-medium groups)
+**Total Monthly Cost**: $0-20 for typical usage (small-medium groups)
 
 ## 🔒 Privacy & Security
 
 - **No persistent storage**: Messages are not stored in a database
 - **In-memory only**: Last 100 messages kept in memory for quick access
 - **On-demand processing**: Only processes messages when explicitly mentioned
-- **OpenAI data policy**: Review [OpenAI's data usage policy](https://openai.com/policies/api-data-usage-policies)
+- **Anthropic data policy**: Review [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy)
 - **Secure credentials**: All tokens and API keys stored as environment variables
 
-⚠️ **Important**: Messages are sent to OpenAI's API for summarization. Consider this before using in sensitive conversations.
+⚠️ **Important**: Messages are sent to Anthropic's API for summarization. Consider this before using in sensitive conversations.
 
 ## 🛠️ Development
 
@@ -239,9 +245,9 @@ telegram-summarizer-bot/
 - Bot can only see messages after it was added to the group
 - Wait for more conversation, then try again
 
-### OpenAI errors
+### Anthropic API errors
 - Check your API key is valid
-- Verify you have credits in your OpenAI account
+- Verify you have credits in your Anthropic account
 - Check rate limits haven't been exceeded
 
 See [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) for detailed troubleshooting.
@@ -262,7 +268,7 @@ git push
 ### Monitoring
 
 - Check deployment logs regularly
-- Monitor OpenAI usage on their dashboard
+- Monitor Anthropic usage on their dashboard
 - Track Railway/Render usage to stay within free tier
 
 ## 🤝 Contributing
@@ -282,7 +288,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🙏 Acknowledgments
 
 - [python-telegram-bot](https://python-telegram-bot.org/) - Telegram Bot API wrapper
-- [OpenAI](https://openai.com/) - AI-powered summarization
+- [Anthropic](https://www.anthropic.com/) - Claude AI for intelligent summarization
 - [Railway](https://railway.app/) - Easy cloud deployment
 - [Render](https://render.com/) - Alternative cloud hosting
 
