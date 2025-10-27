@@ -201,8 +201,16 @@ Please provide a brief summary in bullet points (maximum 8 points). Start with "
 """
         
         # Call Claude API
+        # Available Claude models (as of October 2024):
+        # - claude-3-5-sonnet-20240620: Latest Sonnet (recommended for most use cases)
+        # - claude-3-opus-20240229: Most capable, slower and more expensive
+        # - claude-3-sonnet-20240229: Balanced performance and speed
+        # - claude-3-haiku-20240307: Fastest and most cost-effective
+        # 
+        # To change the model, set the CLAUDE_MODEL environment variable:
+        # export CLAUDE_MODEL='claude-3-opus-20240229'
         response = anthropic_client.messages.create(
-            model=os.getenv('CLAUDE_MODEL', 'claude-3-5-sonnet-20241022'),
+            model=os.getenv('CLAUDE_MODEL', 'claude-3-5-sonnet-20240620'),
             max_tokens=500,
             temperature=0.7,
             messages=[
