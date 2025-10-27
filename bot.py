@@ -227,21 +227,18 @@ async def generate_summary(messages_text: str) -> str:
             return "⚠️ No recent messages available to summarize. I can only summarize messages that I've seen since being added to the group."
         
         # Create the prompt for Claude
-        prompt = f"""You are a helpful assistant that summarizes Telegram group chat conversations.
+        prompt = f"""Catch me up on the group chat like you're my friend. What'd I miss? 
 
-Please analyze the following chat messages and create a concise summary in bullet point format.
+Just give me the vibe of the conversation and anything I actually need to know - who said what about what, any plans being made, anyone asking for me, funny moments, whatever matters.
 
-Focus on:
-- Main topics discussed
-- Key decisions or conclusions
-- Important questions or concerns
-- Action items or tasks mentioned
-- Notable announcements
+Be natural about it. Pretend I just texted you "bro what happened in the chat" and you're filling me in.
 
-Chat messages:
+If there's only like 2-3 messages, just tell me what they said. If it's a ton of messages, give me the condensed version.
+
+Keep it chill and conversational - use a casual, friendly tone like we're texting. No formal headers or bullet points unless it actually makes it clearer.
+
+Messages:
 {messages_text}
-
-Please provide a brief summary in bullet points (maximum 8 points). Start with "📝 Summary:"
 """
         
         # Call Claude API
