@@ -1,0 +1,11 @@
+# Telegram Bot Library
+python-telegram-bot==20.7
+
+# Anthropic API for AI-powered summaries
+anthropic==0.39.0
+
+# Database support (optional - for PostgreSQL)
+asyncpg==0.29.0
+
+# Additional dependencies
+python-dotenv==1.0.0
