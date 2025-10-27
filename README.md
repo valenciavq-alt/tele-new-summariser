@@ -14,6 +14,10 @@ A smart Telegram bot that automatically summarizes conversations using AI in **b
 - 💬 **Dual Chat Support**: Works seamlessly in both group chats AND private/individual chats
 - 📝 **Bullet Point Format**: Easy-to-read summaries with key highlights
 - ⚡ **Real-time Processing**: Get summaries instantly when you need them
+- 🗄️ **PostgreSQL Database Support**: Store unlimited message history (optional, with fallback to in-memory)
+- 📅 **Custom Timeframe Filtering**: Summarize messages from specific time periods
+  - Relative timeframes: "last 2 hours", "today", "yesterday"
+  - Absolute date ranges: "from 2024-01-15 to 2024-01-20", "on 2024-01-15"
 - 🔒 **Privacy Focused**: Only processes messages when explicitly requested
 - 🌍 **24/7 Availability**: Runs continuously on cloud platforms
 - 👥 **Multi-Chat Support**: Use the same bot across multiple groups and private conversations
@@ -97,7 +101,17 @@ or
 ```
 This will summarize the last 50 messages instead of the default.
 
-**Method 4: Reply with mention**
+**Method 4: Use command with custom timeframes** ⭐ **NEW**
+```
+/summarize today
+/summarize yesterday
+/summarize last 2 hours
+/summarize last 3 days
+/summarize from 2024-01-15 to 2024-01-20
+/summarize on 2024-01-15
+```
+
+**Method 5: Reply with mention**
 Reply to any message and mention the bot.
 
 ---
@@ -125,6 +139,16 @@ or
 ```
 This will summarize the last 30 messages of your private conversation.
 
+**Method 3: Use command with custom timeframes** ⭐ **NEW**
+```
+/summarize today
+/summarize yesterday
+/summarize last 2 hours
+/summarize last 1 week
+/summarize from 2024-10-01 to 2024-10-15
+/summarize on 2024-10-15
+```
+
 ### Example Output
 
 ```
@@ -147,6 +171,7 @@ This will summarize the last 30 messages of your private conversation.
 | `TELEGRAM_BOT_TOKEN` | Yes | - | Your Telegram bot token from BotFather |
 | `BOT_USERNAME` | Yes | - | Your bot's username (without @) |
 | `ANTHROPIC_API_KEY` | Yes | - | Your Anthropic API key |
+| `DATABASE_URL` | No | - | PostgreSQL connection URL (optional, for persistent storage) |
 | `CLAUDE_MODEL` | No | `claude-3-haiku-20240307` | Claude model to use (see options below) |
 | `MESSAGE_LIMIT` | No | `75` | Maximum number of messages to summarize |
 | `MAX_MESSAGE_AGE_HOURS` | No | `24` | Only summarize messages within this timeframe |
@@ -162,6 +187,40 @@ This will summarize the last 30 messages of your private conversation.
 - Only set the `CLAUDE_MODEL` environment variable if you want to override the default
 - If you're getting 404 model errors, **DELETE** the `CLAUDE_MODEL` variable to use Haiku
 
+### Database Setup (Optional but Recommended)
+
+The bot supports PostgreSQL for persistent message storage, allowing you to:
+- Store unlimited message history (not just last 100 messages)
+- Use custom timeframe filtering effectively
+- Retrieve summaries from any time period
+- Maintain history across bot restarts
+
+**Setting up Database:**
+
+1. **On Railway (Automatic):**
+   - Railway provides PostgreSQL automatically
+   - Add a PostgreSQL service to your project
+   - Railway will set the `DATABASE_URL` environment variable automatically
+   - The bot will detect and use it on next deployment
+
+2. **On Render (Automatic):**
+   - Go to Dashboard → New → PostgreSQL
+   - Create a PostgreSQL database
+   - Copy the "Internal Database URL"
+   - Add it as `DATABASE_URL` environment variable in your bot service
+   - Render will handle the connection
+
+3. **Custom PostgreSQL:**
+   - Set `DATABASE_URL` in this format:
+   ```
+   postgresql://username:password@host:port/database
+   ```
+
+**Without Database:**
+- Bot will use in-memory storage (last 100 messages only)
+- Custom timeframe filtering will work but only for messages in memory
+- History is lost on bot restart
+
 ### Customization
 
 You can customize the bot's behavior by editing `bot.py`:
@@ -169,28 +228,42 @@ You can customize the bot's behavior by editing `bot.py`:
 - **Summary style**: Modify the prompt in `generate_summary()`
 - **Response format**: Change the summary template
 - **Message filtering**: Adjust what messages are included
+- **Database settings**: Modify `database.py` for custom retention policies
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────┐
 │   Telegram  │
-│    Group    │
+│    Chat     │
 └──────┬──────┘
-       │ User mentions bot
+       │ User mentions bot or uses /summarize
        ▼
 ┌─────────────┐
 │  Bot API    │
 │  (Python)   │
 └──────┬──────┘
-       │ Fetches recent messages
+       │ Stores messages
        ▼
-┌─────────────┐
-│  Message    │
-│   Store     │
-└──────┬──────┘
-       │ Formats & sends to AI
-       ▼
+┌─────────────────────────┐
+│  Storage Layer          │
+│  ┌─────────────────┐   │
+│  │   PostgreSQL    │   │ (Optional)
+│  │    Database     │   │
+│  └─────────────────┘   │
+│  ┌─────────────────┐   │
+│  │   In-Memory     │   │ (Fallback)
+│  │     Cache       │   │
+│  └─────────────────┘   │
+└───────────┬─────────────┘
+            │ Retrieves messages by count/timeframe
+            ▼
+┌─────────────────┐
+│ Timeframe Parser│
+│ + Formatter     │
+└───────┬─────────┘
+        │ Formats & sends to AI
+        ▼
 ┌─────────────┐
 │Anthropic API│
 │  (Claude)   │
@@ -222,14 +295,19 @@ You can customize the bot's behavior by editing `bot.py`:
 
 ## 🔒 Privacy & Security
 
-- **No persistent storage**: Messages are not stored in a database
-- **In-memory only**: Last 100 messages kept in memory for quick access
+- **Optional database storage**: You control whether messages are stored persistently
+  - **With DATABASE_URL**: Messages stored in PostgreSQL for extended history
+  - **Without DATABASE_URL**: Only last 100 messages kept in memory (cleared on restart)
 - **On-demand processing**: Only processes messages when explicitly requested (via mention or `/summarize` command)
 - **Works in private chats**: The bot can summarize your private conversations while maintaining the same privacy standards
 - **Anthropic data policy**: Review [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy)
 - **Secure credentials**: All tokens and API keys stored as environment variables
+- **No sharing**: Your messages are only sent to Anthropic for summarization, never shared elsewhere
 
-⚠️ **Important**: Messages are sent to Anthropic's API for summarization. Consider this before using in sensitive conversations (both in groups and private chats).
+⚠️ **Important**: 
+- Messages are sent to Anthropic's API for summarization. Consider this before using in sensitive conversations (both in groups and private chats).
+- If you enable database storage, messages will be persisted in your PostgreSQL database. Ensure your database is properly secured.
+- You can disable database storage by removing the `DATABASE_URL` environment variable.
 
 ## 🛠️ Development
 
@@ -262,6 +340,8 @@ python bot.py
 ```
 telegram-summarizer-bot/
 ├── bot.py                    # Main bot application
+├── database.py               # PostgreSQL database module
+├── timeframe_parser.py       # Timeframe parsing module
 ├── requirements.txt          # Python dependencies
 ├── .env.example             # Environment variables template
 ├── Procfile                 # Railway/Heroku deployment
@@ -277,9 +357,14 @@ telegram-summarizer-bot/
 | Command | Description |
 |---------|-------------|
 | `/start` | Show welcome message and instructions |
-| `/help` | Display help information |
+| `/help` | Display help information with timeframe examples |
 | `/summarize` or `/summary` | Get a summary of recent messages (works in both group and private chats) |
 | `/summarize <number>` | Get a summary of the last \<number\> messages (e.g., `/summarize 50`) |
+| `/summarize <timeframe>` | Get a summary for a specific timeframe (e.g., `/summarize today`) |
+
+**Supported Timeframes:**
+- Relative: `today`, `yesterday`, `last X hours`, `last X days`, `last X weeks`
+- Absolute: `from YYYY-MM-DD to YYYY-MM-DD`, `on YYYY-MM-DD`
 
 ## 🐛 Troubleshooting
 
@@ -484,15 +569,18 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🗺️ Roadmap
 
-Future improvements planned:
+Recent additions:
+- [x] PostgreSQL database support for persistent storage
+- [x] Custom timeframe filtering (relative and absolute dates)
 
+Future improvements planned:
 - [ ] Support for multiple languages
 - [ ] Custom summary templates
 - [ ] Analytics dashboard
 - [ ] Message sentiment analysis
 - [ ] Export summaries to PDF
 - [ ] Integration with other chat platforms
-- [ ] Database support for better message history
+- [ ] Scheduled automatic summaries
 
 ## ⭐ Show Your Support
 

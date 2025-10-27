@@ -24,6 +24,10 @@ from telegram.ext import (
 )
 from anthropic import Anthropic
 
+# Import database and timeframe parser modules
+from database import db_manager
+from timeframe_parser import TimeframeParser, parse_timeframe
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -84,40 +88,56 @@ Let's get started! 🚀
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle the /help command"""
+    
+    # Check if database is enabled to provide accurate info
+    storage_info = "PostgreSQL database" if db_manager.enabled else f"last {MAX_STORED_MESSAGES} messages in memory"
+    
     help_message = """
 🤖 **Message Summarizer Bot - Help**
 
 **How it works:**
-I can summarize recent messages in both group chats and private chats! I'll read the last {} messages and create a brief summary with key points.
+I can summarize messages in both group chats and private chats using AI!
 
-**Ways to use:**
+**Basic Usage:**
 
 **In Group Chats:**
 • Mention me: @{} 
-• Use the command: /summarize
+• Use the command: `/summarize`
 • Reply to any message and mention me
 
 **In Private Chats:**
-• Use the command: /summarize
+• Use the command: `/summarize`
 • I'll summarize our recent conversation
 
-**Tips:**
-• I work in both group discussions and private chats
-• I'll only summarize messages from the last {} hours
-• The summary will be in bullet point format for easy reading
+**Advanced Features - Custom Timeframes:**
+
+You can now specify custom timeframes for summaries!
+
+**Examples:**
+• `/summarize` - Default (last {} messages)
+• `/summarize 50` - Summarize last 50 messages
+• `/summarize today` - Today's messages
+• `/summarize yesterday` - Yesterday's messages
+• `/summarize last 2 hours` - Last 2 hours
+• `/summarize last 3 days` - Last 3 days
+• `/summarize last 1 week` - Last week
+• `/summarize from 2024-01-15 to 2024-01-20` - Specific date range
+• `/summarize on 2024-01-15` - Specific day
+
+**Storage:**
+• Messages are stored in: {}
+• Summaries are in bullet point format for easy reading
 
 **Privacy:**
 • In groups: I only process messages when explicitly mentioned or commanded
 • In private: I only summarize when you use /summarize
-• I don't store chat history permanently (only last {} messages in memory)
-• All processing is done in real-time
+• All summaries are processed in real-time with Claude AI
 
 Need more help? Contact the bot administrator.
     """.format(
-        MESSAGE_LIMIT,
         get_bot_username() or "bot",
-        MAX_MESSAGE_AGE_HOURS,
-        MAX_STORED_MESSAGES
+        MESSAGE_LIMIT,
+        storage_info
     )
     
     await update.message.reply_text(help_message, parse_mode='Markdown')
@@ -334,33 +354,103 @@ MAX_STORED_MESSAGES = 100
 
 
 async def store_message(update: Update):
-    """Store messages in memory for later summarization"""
+    """Store messages in memory and/or database for later summarization"""
     if not update.message or not update.message.text:
         return
     
     chat_id = update.effective_chat.id
+    message_id = update.message.message_id
+    user_id = update.message.from_user.id if update.message.from_user else None
+    username = update.message.from_user.username or update.message.from_user.first_name or "Unknown"
+    text = update.message.text
+    timestamp = update.message.date
     
+    # Store in database if available
+    if db_manager.enabled:
+        await db_manager.store_message(
+            chat_id=chat_id,
+            message_id=message_id,
+            user_id=user_id,
+            username=username,
+            text=text,
+            timestamp=timestamp
+        )
+    
+    # Also store in memory as fallback/cache
     # Initialize storage for this chat if not exists
     if chat_id not in chat_message_store:
         chat_message_store[chat_id] = []
     
     # Store message data
     message_data = {
-        'text': update.message.text,
-        'username': update.message.from_user.username or update.message.from_user.first_name or "Unknown",
-        'timestamp': update.message.date.strftime('%H:%M:%S'),
-        'date': update.message.date
+        'message_id': message_id,
+        'user_id': user_id,
+        'text': text,
+        'username': username,
+        'timestamp': timestamp.strftime('%H:%M:%S'),
+        'date': timestamp
     }
     
     chat_message_store[chat_id].append(message_data)
     
-    # Keep only the last MAX_STORED_MESSAGES
+    # Keep only the last MAX_STORED_MESSAGES in memory
     if len(chat_message_store[chat_id]) > MAX_STORED_MESSAGES:
         chat_message_store[chat_id] = chat_message_store[chat_id][-MAX_STORED_MESSAGES:]
 
 
-async def get_stored_messages(chat_id: int, limit: int = MESSAGE_LIMIT) -> List[dict]:
-    """Retrieve stored messages for a chat"""
+async def get_stored_messages(
+    chat_id: int,
+    limit: int = MESSAGE_LIMIT,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None
+) -> List[dict]:
+    """
+    Retrieve stored messages for a chat
+    
+    Args:
+        chat_id: Telegram chat ID
+        limit: Maximum number of messages to retrieve (used when start_time is None)
+        start_time: Optional start time for timeframe filtering
+        end_time: Optional end time for timeframe filtering
+    
+    Returns:
+        List of message dictionaries
+    """
+    # If timeframe is specified, use database (if available) or filter in-memory
+    if start_time is not None:
+        # Try database first
+        if db_manager.enabled:
+            return await db_manager.get_messages_by_timeframe(
+                chat_id=chat_id,
+                start_time=start_time,
+                end_time=end_time
+            )
+        
+        # Fall back to in-memory with timeframe filter
+        if chat_id not in chat_message_store:
+            return []
+        
+        messages = chat_message_store[chat_id]
+        end_time = end_time or datetime.now(timezone.utc)
+        
+        # Filter by timeframe
+        filtered_messages = [
+            msg for msg in messages
+            if msg.get('date') and start_time <= msg['date'] <= end_time
+        ]
+        
+        return filtered_messages
+    
+    # Otherwise, use count-based retrieval
+    # Try database first
+    if db_manager.enabled:
+        return await db_manager.get_messages_by_count(
+            chat_id=chat_id,
+            limit=limit,
+            max_age_hours=MAX_MESSAGE_AGE_HOURS
+        )
+    
+    # Fall back to in-memory storage
     if chat_id not in chat_message_store:
         return []
     
@@ -387,30 +477,106 @@ async def handle_mention(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /summary and /summarize commands with optional number parameter"""
+    """Handle the /summary and /summarize commands with optional parameters"""
     # Store this message
     await store_message(update)
     
-    # Check if a custom message limit was provided
+    # Parse arguments
+    start_time = None
+    end_time = None
     custom_limit = MESSAGE_LIMIT
-    if context.args and len(context.args) > 0:
-        try:
-            custom_limit = int(context.args[0])
-            # Enforce reasonable limits
-            if custom_limit < 1:
-                custom_limit = 1
-            elif custom_limit > MAX_STORED_MESSAGES:
-                custom_limit = MAX_STORED_MESSAGES
-        except ValueError:
-            # If the argument is not a valid number, use default
-            pass
+    timeframe_str = None
     
-    # Use custom handler logic with custom limit
-    await handle_summary_request(update, context, custom_limit)
+    if context.args and len(context.args) > 0:
+        # Join all arguments to handle multi-word timeframes
+        args_text = ' '.join(context.args)
+        
+        # Try parsing as a number first (backward compatibility)
+        if len(context.args) == 1:
+            try:
+                custom_limit = int(context.args[0])
+                # Enforce reasonable limits
+                if custom_limit < 1:
+                    custom_limit = 1
+                elif custom_limit > MAX_STORED_MESSAGES:
+                    custom_limit = MAX_STORED_MESSAGES
+            except ValueError:
+                # Not a number, try parsing as timeframe
+                parser = TimeframeParser()
+                timeframe_result = parser.parse(args_text)
+                
+                if timeframe_result:
+                    start_time, end_time = timeframe_result
+                    timeframe_str = args_text
+                else:
+                    # Invalid timeframe format
+                    await update.message.reply_text(
+                        "❌ Invalid timeframe format.\n\n"
+                        "**Valid formats:**\n"
+                        "• `/summarize 50` - Last 50 messages\n"
+                        "• `/summarize today`\n"
+                        "• `/summarize yesterday`\n"
+                        "• `/summarize last 2 hours`\n"
+                        "• `/summarize last 3 days`\n"
+                        "• `/summarize from 2024-01-15 to 2024-01-20`\n"
+                        "• `/summarize on 2024-01-15`",
+                        parse_mode='Markdown'
+                    )
+                    return
+        else:
+            # Multiple arguments - must be a timeframe
+            parser = TimeframeParser()
+            timeframe_result = parser.parse(args_text)
+            
+            if timeframe_result:
+                start_time, end_time = timeframe_result
+                timeframe_str = args_text
+            else:
+                # Invalid timeframe format
+                await update.message.reply_text(
+                    "❌ Invalid timeframe format.\n\n"
+                    "**Valid formats:**\n"
+                    "• `/summarize 50` - Last 50 messages\n"
+                    "• `/summarize today`\n"
+                    "• `/summarize yesterday`\n"
+                    "• `/summarize last 2 hours`\n"
+                    "• `/summarize last 3 days`\n"
+                    "• `/summarize from 2024-01-15 to 2024-01-20`\n"
+                    "• `/summarize on 2024-01-15`",
+                    parse_mode='Markdown'
+                )
+                return
+    
+    # Use custom handler logic with parsed parameters
+    await handle_summary_request(
+        update, 
+        context, 
+        message_limit=custom_limit,
+        start_time=start_time,
+        end_time=end_time,
+        timeframe_str=timeframe_str
+    )
 
 
-async def handle_summary_request(update: Update, context: ContextTypes.DEFAULT_TYPE, message_limit: int = MESSAGE_LIMIT):
-    """Handle summary request with custom message limit"""
+async def handle_summary_request(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    message_limit: int = MESSAGE_LIMIT,
+    start_time: Optional[datetime] = None,
+    end_time: Optional[datetime] = None,
+    timeframe_str: Optional[str] = None
+):
+    """
+    Handle summary request with custom parameters
+    
+    Args:
+        update: Telegram update object
+        context: Telegram context
+        message_limit: Number of messages to summarize (when timeframe not specified)
+        start_time: Optional start time for timeframe filtering
+        end_time: Optional end time for timeframe filtering
+        timeframe_str: Optional human-readable timeframe description
+    """
     try:
         chat_id = update.effective_chat.id
         chat_type = update.effective_chat.type
@@ -421,17 +587,33 @@ async def handle_summary_request(update: Update, context: ContextTypes.DEFAULT_T
         # Send a "working on it" message
         status_message = await update.message.reply_text("🤔 Let me read through the recent messages and create a summary for you...")
         
-        # Get stored messages with custom limit
-        messages = await get_stored_messages(chat_id, message_limit)
+        # Get stored messages with custom limit or timeframe
+        if start_time is not None:
+            # Timeframe-based retrieval
+            messages = await get_stored_messages(
+                chat_id=chat_id,
+                start_time=start_time,
+                end_time=end_time
+            )
+        else:
+            # Count-based retrieval
+            messages = await get_stored_messages(chat_id, message_limit)
         
         logger.info(f"Found {len(messages)} messages to summarize for chat {chat_id}")
         
         if not messages:
-            await status_message.edit_text(
-                "⚠️ I don't have enough message history to create a summary yet.\n\n"
-                "I can only see messages sent after I was added to this group. "
-                "Once there's more conversation, mention me again and I'll create a summary! 📝"
-            )
+            if start_time is not None:
+                await status_message.edit_text(
+                    f"⚠️ No messages found for the timeframe: **{timeframe_str}**\n\n"
+                    "Try a different timeframe or check if I was active during that period.",
+                    parse_mode='Markdown'
+                )
+            else:
+                await status_message.edit_text(
+                    "⚠️ I don't have enough message history to create a summary yet.\n\n"
+                    "I can only see messages sent after I was added to this group. "
+                    "Once there's more conversation, mention me again and I'll create a summary! 📝"
+                )
             return
         
         # Format messages
@@ -440,10 +622,16 @@ async def handle_summary_request(update: Update, context: ContextTypes.DEFAULT_T
         # Generate summary
         summary = await generate_summary(messages_text)
         
-        # Send the summary
-        response = f"{summary}\n\n📊 Summarized {len(messages)} messages from the last {MAX_MESSAGE_AGE_HOURS} hours."
+        # Send the summary with appropriate context
+        if start_time is not None:
+            # Format the dates nicely
+            start_str = start_time.strftime('%Y-%m-%d %H:%M UTC')
+            end_str = end_time.strftime('%Y-%m-%d %H:%M UTC') if end_time else 'now'
+            response = f"{summary}\n\n📊 Summarized {len(messages)} messages from **{timeframe_str}**\n⏰ ({start_str} to {end_str})"
+        else:
+            response = f"{summary}\n\n📊 Summarized {len(messages)} messages from the last {MAX_MESSAGE_AGE_HOURS} hours."
         
-        await status_message.edit_text(response)
+        await status_message.edit_text(response, parse_mode='Markdown')
         
     except Exception as e:
         logger.error(f"Error handling summary request: {e}")
@@ -455,6 +643,11 @@ async def handle_summary_request(update: Update, context: ContextTypes.DEFAULT_T
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle all messages to store them"""
     await store_message(update)
+
+
+async def initialize_database():
+    """Initialize database connection on startup"""
+    await db_manager.initialize()
 
 
 def main():
@@ -469,6 +662,15 @@ def main():
     if not os.getenv('ANTHROPIC_API_KEY'):
         logger.error("ANTHROPIC_API_KEY not found in environment variables!")
         raise ValueError("ANTHROPIC_API_KEY is required")
+    
+    # Initialize database
+    logger.info("Initializing database connection...")
+    asyncio.get_event_loop().run_until_complete(initialize_database())
+    
+    if db_manager.enabled:
+        logger.info("✅ Database enabled - messages will be stored in PostgreSQL")
+    else:
+        logger.info("ℹ️ Database not configured - using in-memory storage (last 100 messages)")
     
     # Create the Application
     application = Application.builder().token(telegram_token).build()
