@@ -178,6 +178,11 @@ async def generate_summary(messages_text: str) -> str:
     Returns:
         AI-generated summary in bullet point format
     """
+    # Determine which model to use
+    # IMPORTANT: Use claude-3-opus-20240229 as the default (most widely available)
+    # Only set CLAUDE_MODEL environment variable if you want to override this default
+    model_name = os.getenv('CLAUDE_MODEL', 'claude-3-opus-20240229')
+    
     try:
         if not messages_text or messages_text == "No messages available to summarize.":
             return "⚠️ No recent messages available to summarize. I can only summarize messages that I've seen since being added to the group."
@@ -201,16 +206,18 @@ Please provide a brief summary in bullet points (maximum 8 points). Start with "
 """
         
         # Call Claude API
-        # Available Claude models (as of October 2024):
-        # - claude-3-5-sonnet-20240620: Latest Sonnet (recommended for most use cases)
-        # - claude-3-opus-20240229: Most capable, slower and more expensive
+        # Available Claude models:
+        # - claude-3-opus-20240229: Most capable and widely available (DEFAULT)
         # - claude-3-sonnet-20240229: Balanced performance and speed
         # - claude-3-haiku-20240307: Fastest and most cost-effective
+        # - claude-3-5-sonnet-20240620: Latest Sonnet (may require specific API access)
         # 
         # To change the model, set the CLAUDE_MODEL environment variable:
-        # export CLAUDE_MODEL='claude-3-opus-20240229'
+        # export CLAUDE_MODEL='claude-3-haiku-20240307'
+        logger.info(f"Using Claude model: {model_name}")
+        
         response = anthropic_client.messages.create(
-            model=os.getenv('CLAUDE_MODEL', 'claude-3-5-sonnet-20240620'),
+            model=model_name,
             max_tokens=500,
             temperature=0.7,
             messages=[
@@ -222,8 +229,23 @@ Please provide a brief summary in bullet points (maximum 8 points). Start with "
         return summary
         
     except Exception as e:
-        logger.error(f"Error generating summary: {e}")
-        return f"❌ Sorry, I encountered an error while generating the summary: {str(e)}"
+        error_msg = f"Error generating summary with model '{model_name}': {e}"
+        logger.error(error_msg)
+        
+        # Provide detailed error information to help with debugging
+        detailed_error = f"❌ Sorry, I encountered an error while generating the summary.\n\n"
+        detailed_error += f"**Model being used:** {model_name}\n"
+        detailed_error += f"**Error:** {str(e)}\n\n"
+        
+        # Check if it's a model-related error
+        if "404" in str(e) or "not found" in str(e).lower():
+            detailed_error += "⚠️ **This appears to be a model availability error.**\n\n"
+            detailed_error += "**Troubleshooting steps:**\n"
+            detailed_error += "1. Check if the CLAUDE_MODEL environment variable is set (it should NOT be set unless you want to override the default)\n"
+            detailed_error += "2. Verify your API key has access to this model\n"
+            detailed_error += "3. Try setting CLAUDE_MODEL to 'claude-3-opus-20240229' or 'claude-3-haiku-20240307'\n"
+        
+        return detailed_error
 
 
 # Store recent messages in memory (in production, use a database)
@@ -376,6 +398,14 @@ def main():
     logger.info("Bot is starting...")
     logger.info(f"Message limit: {MESSAGE_LIMIT}")
     logger.info(f"Max message age: {MAX_MESSAGE_AGE_HOURS} hours")
+    
+    # Log Claude model configuration
+    configured_model = os.getenv('CLAUDE_MODEL', 'claude-3-opus-20240229')
+    if os.getenv('CLAUDE_MODEL'):
+        logger.warning(f"⚠️ CLAUDE_MODEL environment variable is SET to: {configured_model}")
+        logger.warning("   This will override the default model in the code!")
+    else:
+        logger.info(f"✓ Using default Claude model: {configured_model}")
     
     # Start the bot
     application.run_polling(allowed_updates=Update.ALL_TYPES)

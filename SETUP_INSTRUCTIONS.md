@@ -252,15 +252,14 @@ This is where you'll add your Bot Token and Anthropic API Key!
    - Key: `ANTHROPIC_API_KEY`
    - Value: [Paste your Anthropic API key from Step 2]
 
-   **Variable 4 (Optional):**
-   - Key: `CLAUDE_MODEL`
-   - Value: `claude-3-5-sonnet-20241022`
-
-   **Variable 5 (Optional):**
+   **⚠️ IMPORTANT: Do NOT add the CLAUDE_MODEL variable unless you want to override the default!**
+   The bot is already configured to use `claude-3-opus-20240229` by default.
+   
+   **Variable 4 (Optional - Usually NOT needed):**
    - Key: `MESSAGE_LIMIT`
    - Value: `75`
 
-   **Variable 6 (Optional):**
+   **Variable 5 (Optional - Usually NOT needed):**
    - Key: `MAX_MESSAGE_AGE_HOURS`
    - Value: `24`
 
@@ -338,15 +337,14 @@ Scroll down to the **Environment Variables** section:
    - Key: `ANTHROPIC_API_KEY`
    - Value: [Paste your Anthropic API key from Step 2]
 
-   **Variable 4:**
-   - Key: `CLAUDE_MODEL`
-   - Value: `claude-3-5-sonnet-20241022`
-
-   **Variable 5:**
+   **⚠️ IMPORTANT: Do NOT add the CLAUDE_MODEL variable unless you want to override the default!**
+   The bot is already configured to use `claude-3-opus-20240229` by default.
+   
+   **Variable 4 (Optional - Usually NOT needed):**
    - Key: `MESSAGE_LIMIT`
    - Value: `75`
 
-   **Variable 6:**
+   **Variable 5 (Optional - Usually NOT needed):**
    - Key: `MAX_MESSAGE_AGE_HOURS`
    - Value: `24`
 
@@ -502,24 +500,54 @@ Reply to any message in the group and mention the bot:
 - Have a short conversation (10-20 messages)
 - Try mentioning the bot again
 
-### Problem: "Error generating summary" message
+### Problem: "Error generating summary" or "404 Model Not Found" error
 
-**Possible Causes:**
+**This is the most common issue!** If you see an error like:
+- `Error 404: model 'claude-3-5-sonnet-20241022' not found`
+- `Model not available`
+- Any error mentioning a specific Claude model
 
-1. **Anthropic API Key Issue:**
-   - Check if your API key is correct
-   - Verify you have credits/payment method on Anthropic
-   - Check Anthropic usage limits
+**Cause:** Either an environment variable is overriding the default model, or your API key doesn't have access to that model.
 
-2. **Check Anthropic Account:**
+**Solution:**
+
+1. **Check your environment variables (MOST COMMON FIX):**
+   
+   **On Railway:**
+   - Go to your project dashboard
+   - Click on your service
+   - Click the **Variables** tab
+   - **Look for a variable named `CLAUDE_MODEL`**
+   - If you see it: **DELETE IT** (click the trash icon)
+   - The bot will automatically use the default model (`claude-3-opus-20240229`)
+   
+   **On Render:**
+   - Go to your service dashboard
+   - Click **Environment** in the left menu
+   - **Look for `CLAUDE_MODEL` variable**
+   - If you see it: **DELETE IT** (click delete button)
+   - Click **Save Changes**
+
+2. **Verify the fix:**
+   - After deleting the variable, your bot will redeploy
+   - Check the **Logs** tab
+   - You should see: `✓ Using default Claude model: claude-3-opus-20240229`
+   - If you see: `⚠️ CLAUDE_MODEL environment variable is SET to:` - then the variable is still there
+
+3. **If you still have issues after removing the variable:**
+
+   **Check Anthropic API Key:**
    - Log in to [console.anthropic.com](https://console.anthropic.com)
    - Go to Billing → Usage
    - Make sure you have available credits
    - Check if your API key is active
+   - Verify you've added a payment method
 
-3. **API Rate Limits:**
+4. **API Rate Limits:**
    - If many people use the bot at once, Anthropic might rate-limit you
    - Wait a few minutes and try again
+
+**⚠️ IMPORTANT:** The `CLAUDE_MODEL` environment variable should **NOT** be set unless you specifically want to override the default model. If you set it during initial setup, that's likely causing your issue!
 
 ### Problem: Bot stopped working after a few days
 
@@ -613,11 +641,15 @@ Yes! Edit the `bot.py` file and modify the prompt in the `generate_summary()` fu
 
 ### Can I use different Claude models?
 
-Yes! Just change the `CLAUDE_MODEL` environment variable. Options include:
-- `claude-3-5-sonnet-20241022` (default, best balance of speed and quality)
-- `claude-3-opus-20240229` (highest quality, more expensive)
+Yes! The default model is `claude-3-opus-20240229` (most widely available).
+
+To use a different model, set the `CLAUDE_MODEL` environment variable. Options include:
+- `claude-3-opus-20240229` (default - most widely available, highest quality)
 - `claude-3-sonnet-20240229` (faster, more economical)
-Note: Claude 3.5 Sonnet is usually the best choice for most use cases
+- `claude-3-haiku-20240307` (fastest and cheapest)
+- `claude-3-5-sonnet-20240620` (latest Sonnet - may require specific API access)
+
+**⚠️ Warning:** Only change this if you know your API key has access to the model. Most users should leave this unset to use the default!
 
 ### How do I stop the bot?
 

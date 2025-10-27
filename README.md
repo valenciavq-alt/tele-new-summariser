@@ -110,14 +110,17 @@ Reply to any message and mention the bot.
 | `TELEGRAM_BOT_TOKEN` | Yes | - | Your Telegram bot token from BotFather |
 | `BOT_USERNAME` | Yes | - | Your bot's username (without @) |
 | `ANTHROPIC_API_KEY` | Yes | - | Your Anthropic API key |
-| `CLAUDE_MODEL` | No | `claude-3-5-sonnet-20241022` | Claude model to use (see options below) |
+| `CLAUDE_MODEL` | No | `claude-3-opus-20240229` | Claude model to use (see options below) |
 | `MESSAGE_LIMIT` | No | `75` | Maximum number of messages to summarize |
 | `MAX_MESSAGE_AGE_HOURS` | No | `24` | Only summarize messages within this timeframe |
 
 **Available Claude Models:**
-- `claude-3-5-sonnet-20241022` (recommended - best balance)
-- `claude-3-opus-20240229` (highest quality)
+- `claude-3-opus-20240229` (default - most widely available)
 - `claude-3-sonnet-20240229` (faster, more economical)
+- `claude-3-haiku-20240307` (fastest and most cost-effective)
+- `claude-3-5-sonnet-20240620` (latest Sonnet - may require specific API access)
+
+**⚠️ IMPORTANT:** Only set the `CLAUDE_MODEL` environment variable if you want to override the default. If you're getting model errors, check if this variable is set in your deployment environment!
 
 ### Customization
 
@@ -245,10 +248,37 @@ telegram-summarizer-bot/
 - Bot can only see messages after it was added to the group
 - Wait for more conversation, then try again
 
-### Anthropic API errors
-- Check your API key is valid
-- Verify you have credits in your Anthropic account
-- Check rate limits haven't been exceeded
+### Anthropic API errors (404 Model Not Found)
+
+If you're seeing errors like `Error 404: model 'claude-3-5-sonnet-20241022' not found`, this is likely an environment variable issue:
+
+**Problem:** The bot is using a model that your API key doesn't have access to, or an environment variable is overriding the default model in the code.
+
+**Solution:**
+
+1. **Check your deployment environment variables:**
+   - **Railway:** Go to your project → Variables tab
+   - **Render:** Go to your service → Environment tab
+   - **Look for:** `CLAUDE_MODEL` variable
+
+2. **If `CLAUDE_MODEL` is set:**
+   - **Option A:** Delete this environment variable completely (the code will use the default: `claude-3-opus-20240229`)
+   - **Option B:** Change it to a model your API key has access to:
+     - `claude-3-opus-20240229` (most widely available)
+     - `claude-3-haiku-20240307` (fastest and cheapest)
+     - `claude-3-sonnet-20240229` (balanced)
+
+3. **Verify the fix:**
+   - Redeploy your bot after making changes
+   - Check the logs on startup - you should see: `✓ Using default Claude model: claude-3-opus-20240229`
+   - If you still see `⚠️ CLAUDE_MODEL environment variable is SET to:`, then the variable is still set in your environment
+
+4. **Additional checks:**
+   - Verify your Anthropic API key is valid
+   - Check you have credits in your Anthropic account
+   - Confirm rate limits haven't been exceeded
+
+**⚠️ Important:** Do **NOT** set the `CLAUDE_MODEL` environment variable unless you specifically want to override the default model in the code!
 
 See [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md) for detailed troubleshooting.
 
