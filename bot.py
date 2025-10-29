@@ -366,21 +366,30 @@ async def generate_summary(messages_text: str, context: ContextTypes.DEFAULT_TYP
                 return error_msg
         
         # Create the prompt for Claude
-        prompt = f"""Summarize these messages in a casual, friendly way like you're catching me up. What'd I miss?
+        prompt = f"""Hey! Can you summarize these messages for me? Give me the highlights in a casual, easy-to-read way with bullet points.
 
-BUT - and this is CRITICAL - ONLY mention things that are actually in the messages below. Don't make up names, events, or details. Don't add creative interpretations or assume things that weren't said. Stick strictly to what was ACTUALLY written in these messages.
+⚠️ CRITICAL RULES - READ CAREFULLY:
+• ONLY use information that's ACTUALLY in the messages below
+• DO NOT make up names, events, details, or anything else
+• DO NOT invent conversations or assume things that weren't said
+• DO NOT add creative interpretations or fill in gaps
+• If someone's name appears in the messages, use it. If not, don't make one up.
+• If there's nothing really significant to summarize, just say so - don't force it
 
-Just give me the vibe of the conversation and anything I actually need to know - who said what about what, any plans being made, anyone asking for me, funny moments, whatever matters. But everything you mention must be directly from the messages.
+Give me:
+• The key points and highlights
+• Who said what (if relevant)
+• Any important decisions, plans, or questions
+• Anything funny or noteworthy that actually happened
 
-Be natural about it. Pretend I just texted you "bro what happened in the chat" and you're filling me in - but you're only telling me what ACTUALLY happened based on these exact messages.
+Format: Use bullet points to make it scannable and easy to read.
 
-If there's only like 2-3 messages, just tell me what they said. If it's a ton of messages, give me the condensed version.
-
-Keep it chill and conversational - use a casual, friendly tone like we're texting. No formal headers or bullet points unless it actually makes it clearer.
+Tone: Keep it friendly and conversational, like you're texting a friend to catch them up. But remember - only tell me what ACTUALLY happened in these messages!
 
 Messages:
 {messages_text}
-"""
+
+Remember: If the messages are just random small talk with nothing important, it's totally fine to say "Just some casual chat, nothing major!" Don't fabricate significance that isn't there."""
         
         # Call Claude API
         # Available Claude models (in order of accessibility):
