@@ -397,6 +397,7 @@ Remember:
 - Omit any section that has no relevant content
 - Keep it concise and factual
 - If the conversation is just casual chat with nothing significant, it's fine to say: "Just casual conversation, no major topics or action items."
+"""
         
         # Call Claude API
         # Available Claude models (in order of accessibility):
