@@ -22,6 +22,12 @@ class TimeframeParser:
         re.IGNORECASE
     )
     
+    # Shorthand patterns (e.g., 60d, 2mo, 3w, 24h)
+    SHORTHAND_PATTERN = re.compile(
+        r'^(\d+)\s*(h|hours?|d|days?|w|weeks?|mo|months?)$',
+        re.IGNORECASE
+    )
+    
     DATE_RANGE_PATTERN = re.compile(
         r'^from\s+(\d{4}-\d{2}-\d{2})\s+to\s+(\d{4}-\d{2}-\d{2})$',
         re.IGNORECASE
@@ -62,6 +68,11 @@ class TimeframeParser:
         if text == 'yesterday':
             return self._parse_yesterday()
         
+        # Try parsing shorthand formats (e.g., "60d", "2mo", "3w", "24h")
+        shorthand_match = self.SHORTHAND_PATTERN.match(text)
+        if shorthand_match:
+            return self._parse_shorthand(shorthand_match)
+        
         # Try parsing relative timeframes (e.g., "last 2 hours")
         relative_match = self.RELATIVE_PATTERN.match(text)
         if relative_match:
@@ -94,6 +105,41 @@ class TimeframeParser:
         start_of_yesterday = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_yesterday = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
         return (start_of_yesterday, end_of_yesterday)
+    
+    def _parse_shorthand(self, match: re.Match) -> Tuple[datetime, datetime]:
+        """
+        Parse shorthand timeframes like '60d', '2mo', '3w', '24h'
+        
+        Args:
+            match: Regex match object
+            
+        Returns:
+            Tuple of (start_time, end_time)
+        """
+        amount = int(match.group(1))
+        unit = match.group(2).lower()
+        
+        now = datetime.now(timezone.utc)
+        
+        # Normalize unit variations to base form
+        if unit in ('h', 'hour', 'hours'):
+            delta = timedelta(hours=amount)
+        elif unit in ('d', 'day', 'days'):
+            delta = timedelta(days=amount)
+        elif unit in ('w', 'week', 'weeks'):
+            delta = timedelta(weeks=amount)
+        elif unit in ('mo', 'month', 'months'):
+            # Approximate months as 30 days
+            # For more precise month calculations, consider using dateutil.relativedelta
+            delta = timedelta(days=amount * 30)
+        else:
+            # Should not happen due to regex, but just in case
+            delta = timedelta(hours=24)
+        
+        start_time = now - delta
+        end_time = now
+        
+        return (start_time, end_time)
     
     def _parse_relative(self, match: re.Match) -> Tuple[datetime, datetime]:
         """
@@ -230,6 +276,10 @@ class TimeframeParser:
         return [
             "today",
             "yesterday",
+            "24h",  # shorthand
+            "60d",  # shorthand
+            "2mo",  # shorthand
+            "3w",   # shorthand
             "last 2 hours",
             "last 3 days",
             "last 1 week",
