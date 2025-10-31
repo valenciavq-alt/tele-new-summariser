@@ -366,30 +366,37 @@ async def generate_summary(messages_text: str, context: ContextTypes.DEFAULT_TYP
                 return error_msg
         
         # Create the prompt for Claude
-        prompt = f"""Hey! Can you summarize these messages for me? Give me the highlights in a casual, easy-to-read way with bullet points.
+        prompt = f"""Analyze and summarize the following Telegram conversation.
 
-⚠️ CRITICAL RULES - READ CAREFULLY:
-• ONLY use information that's ACTUALLY in the messages below
-• DO NOT make up names, events, details, or anything else
-• DO NOT invent conversations or assume things that weren't said
-• DO NOT add creative interpretations or fill in gaps
+⚠️ CRITICAL GROUNDING RULES - READ CAREFULLY:
+• ONLY use information that is ACTUALLY present in the messages below
+• DO NOT make up names, events, details, or any other information
+• DO NOT invent conversations or assume things that weren't explicitly said
+• DO NOT add creative interpretations or fill in gaps with assumptions
 • If someone's name appears in the messages, use it. If not, don't make one up.
-• If there's nothing really significant to summarize, just say so - don't force it
-
-Give me:
-• The key points and highlights
-• Who said what (if relevant)
-• Any important decisions, plans, or questions
-• Anything funny or noteworthy that actually happened
-
-Format: Use bullet points to make it scannable and easy to read.
-
-Tone: Keep it friendly and conversational, like you're texting a friend to catch them up. But remember - only tell me what ACTUALLY happened in these messages!
+• If a section has NO relevant content, COMPLETELY OMIT that section from your output
+• If the messages contain only casual chat with no significant content, say so briefly
 
 Messages:
 {messages_text}
 
-Remember: If the messages are just random small talk with nothing important, it's totally fine to say "Just some casual chat, nothing major!" Don't fabricate significance that isn't there."""
+Provide a structured summary with the following sections. IMPORTANT: Only include a section if there is actual, relevant information for it. If a section has nothing to report, skip it entirely.
+
+1. **Main Topics Discussed**: List the key subjects or themes that were actually discussed (only include if there are identifiable topics)
+
+2. **Key Points**: Important details, facts, or information that were shared (only include if there are noteworthy points)
+
+3. **Decisions Made**: Any conclusions, agreements, or decisions that were reached (only include if actual decisions were made)
+
+4. **Action Items**: Tasks, follow-ups, or commitments that were mentioned (only include if action items exist)
+
+5. **Questions Raised**: Unanswered questions or concerns that were brought up (only include if questions remain open)
+
+Remember: 
+- Only report what was ACTUALLY said in the messages
+- Omit any section that has no relevant content
+- Keep it concise and factual
+- If the conversation is just casual chat with nothing significant, it's fine to say: "Just casual conversation, no major topics or action items."
         
         # Call Claude API
         # Available Claude models (in order of accessibility):
