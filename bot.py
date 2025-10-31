@@ -11,7 +11,7 @@ In private chats: use /summarize command
 import os
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional
+from typing import List, Optional, Dict
 import asyncio
 
 from telegram import Update, Message
@@ -28,6 +28,12 @@ from anthropic import Anthropic
 from database import db_manager
 from timeframe_parser import TimeframeParser, parse_timeframe
 
+# Import cost tracker module
+from cost_tracker import initialize_cost_tracker, get_cost_tracker
+
+# Import smart sampler module
+from smart_sampler import get_smart_sampler
+
 # Configure logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -41,6 +47,10 @@ anthropic_client = Anthropic(api_key=os.getenv('ANTHROPIC_API_KEY'))
 # Configuration
 MESSAGE_LIMIT = int(os.getenv('MESSAGE_LIMIT', '75'))  # Number of messages to summarize
 MAX_MESSAGE_AGE_HOURS = int(os.getenv('MAX_MESSAGE_AGE_HOURS', '24'))  # Only summarize recent messages
+
+# Admin configuration for cost tracking notifications
+# Set ADMIN_USER_ID in environment to receive budget warnings
+ADMIN_USER_ID = os.getenv('ADMIN_USER_ID')  # Your Telegram user ID
 
 
 def get_bot_username():
@@ -72,7 +82,7 @@ I can help summarize conversations in your group chats AND private chats!
 /start - Show this welcome message
 /help - Get help on how to use the bot
 /summarize - Get a summary of recent messages (works in both group and private chats)
-/usage - View usage statistics and estimated API costs
+/usage - Check current API usage and budget status
 
 **Example:**
 In groups: "@{} what did I miss?" or use /summarize
@@ -117,6 +127,14 @@ You can now specify custom timeframes for summaries!
 **Examples:**
 • `/summarize` - Default (last {} messages)
 • `/summarize 50` - Summarize last 50 messages
+
+**Shorthand Syntax (NEW):** ⭐
+• `/summarize 24h` - Last 24 hours
+• `/summarize 60d` - Last 60 days
+• `/summarize 2mo` - Last 2 months
+• `/summarize 3w` - Last 3 weeks
+
+**Natural Language:**
 • `/summarize today` - Today's messages
 • `/summarize yesterday` - Yesterday's messages
 • `/summarize last 2 hours` - Last 2 hours
@@ -125,19 +143,25 @@ You can now specify custom timeframes for summaries!
 • `/summarize from 2024-01-15 to 2024-01-20` - Specific date range
 • `/summarize on 2024-01-15` - Specific day
 
+**Smart Features:**
+• **Hard Limits:** Max 1000 messages per request
+• **Smart Sampling:** Auto-sampling for large timeframes
+• **Cost Warnings:** Alerts before expensive operations
+• **Budget Protection:** Monthly spending limits
+
 **Storage:**
 • Messages are stored in: {}
 • Summaries are in bullet point format for easy reading
-
-**Usage Tracking:**
-• Use `/usage` to view statistics and estimated API costs
-• Track total messages, summaries generated, and token usage
-• Monitor your API spending with cost estimates
 
 **Privacy:**
 • In groups: I only process messages when explicitly mentioned or commanded
 • In private: I only summarize when you use /summarize
 • All summaries are processed in real-time with Claude AI
+
+**Budget & Usage:**
+• Use `/usage` to check current API usage and budget
+• The bot has a monthly budget limit to control costs
+• Budget automatically resets on the 1st of each month
 
 Need more help? Contact the bot administrator.
     """.format(
@@ -147,105 +171,6 @@ Need more help? Contact the bot administrator.
     )
     
     await update.message.reply_text(help_message, parse_mode='Markdown')
-
-
-async def usage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle the /usage command to show usage statistics"""
-    try:
-        chat_id = update.effective_chat.id
-        chat_type = update.effective_chat.type
-        
-        # Send a "loading" message
-        status_message = await update.message.reply_text("📊 Gathering usage statistics...")
-        
-        # Get usage statistics
-        stats = await db_manager.get_usage_stats(chat_id)
-        
-        if not stats.get('database_enabled', False):
-            # Database not enabled - provide basic info
-            response = """
-⚠️ **Usage Tracking Not Available**
-
-Database storage is not enabled for this bot. Usage statistics require PostgreSQL database configuration.
-
-**Current Storage:** In-memory (last 100 messages)
-
-**To enable usage tracking:**
-1. Set up a PostgreSQL database
-2. Configure the `DATABASE_URL` environment variable
-3. Restart the bot
-
-For more information, contact the bot administrator.
-            """
-            await status_message.edit_text(response, parse_mode='Markdown')
-            return
-        
-        # Calculate costs based on Claude Haiku pricing
-        # Claude 3 Haiku pricing (as of 2024):
-        # Input: $0.25 per million tokens
-        # Output: $1.25 per million tokens
-        input_cost = (stats['total_input_tokens'] / 1_000_000) * 0.25
-        output_cost = (stats['total_output_tokens'] / 1_000_000) * 1.25
-        total_cost = input_cost + output_cost
-        
-        # Format dates
-        if stats['oldest_message']:
-            oldest_date = stats['oldest_message'].strftime('%Y-%m-%d %H:%M UTC')
-        else:
-            oldest_date = "N/A"
-        
-        if stats['newest_message']:
-            newest_date = stats['newest_message'].strftime('%Y-%m-%d %H:%M UTC')
-        else:
-            newest_date = "N/A"
-        
-        # Determine chat type for display
-        if chat_type == 'private':
-            chat_type_display = "Private Chat"
-        elif chat_type == 'group':
-            chat_type_display = "Group Chat"
-        elif chat_type == 'supergroup':
-            chat_type_display = "Supergroup"
-        else:
-            chat_type_display = chat_type.title()
-        
-        # Build comprehensive response
-        response = f"""
-📊 **Usage Statistics for {chat_type_display}**
-
-**📨 Message Statistics:**
-• Total Messages Stored: **{stats['total_messages']:,}**
-• Messages Summarized: **{stats.get('messages_summarized', 0):,}**
-• Oldest Message: {oldest_date}
-• Newest Message: {newest_date}
-
-**🤖 Summary Statistics:**
-• Total Summaries Generated: **{stats['total_summaries']:,}**
-• Input Tokens Used: **{stats['total_input_tokens']:,}**
-• Output Tokens Generated: **{stats['total_output_tokens']:,}**
-• Total Tokens: **{stats['total_input_tokens'] + stats['total_output_tokens']:,}**
-
-**💰 Estimated API Costs (Claude Haiku):**
-• Input Cost: **${input_cost:.4f}**
-• Output Cost: **${output_cost:.4f}**
-• **Total Estimated Cost: ${total_cost:.4f}**
-
-**💡 Cost Breakdown:**
-• Input: $0.25 per million tokens
-• Output: $1.25 per million tokens
-
-**📝 Note:** These are estimates based on Claude 3 Haiku pricing. Actual costs may vary depending on the model used and current Anthropic pricing.
-
-Use /help to see available commands.
-        """
-        
-        await status_message.edit_text(response.strip(), parse_mode='Markdown')
-        
-    except Exception as e:
-        logger.error(f"Error in usage command: {e}")
-        await update.message.reply_text(
-            f"❌ Sorry, I encountered an error while fetching usage statistics:\n\n{str(e)}\n\nPlease try again later."
-        )
 
 
 async def fetch_recent_messages(
@@ -286,6 +211,106 @@ async def fetch_recent_messages(
         return []
 
 
+def estimate_api_cost(message_count: int, messages_text: Optional[str] = None) -> Dict:
+    """
+    Estimate the API cost for processing messages
+    
+    Args:
+        message_count: Number of messages to be processed
+        messages_text: Optional formatted messages text for precise estimation
+    
+    Returns:
+        Dict with cost estimation details:
+        {
+            'estimated_input_tokens': int,
+            'estimated_output_tokens': int,
+            'estimated_cost': float,
+            'warning_threshold_exceeded': bool
+        }
+    """
+    # Token estimation (conservative estimates)
+    # Average message: ~50 tokens, plus prompt overhead (~200 tokens)
+    # Output: typically 100-500 tokens depending on message count
+    
+    if messages_text:
+        # More precise estimation based on actual text
+        # Rough approximation: 1 token ≈ 4 characters
+        estimated_input_tokens = len(messages_text) // 4 + 300  # +300 for prompt
+    else:
+        # Rough estimation based on message count
+        estimated_input_tokens = (message_count * 50) + 300
+    
+    # Output tokens scale with input but are typically smaller
+    estimated_output_tokens = min(500, max(100, message_count // 2))
+    
+    # Calculate cost using Claude Haiku pricing
+    INPUT_TOKEN_COST = 0.25 / 1_000_000  # $0.25 per 1M tokens
+    OUTPUT_TOKEN_COST = 1.25 / 1_000_000  # $1.25 per 1M tokens
+    
+    estimated_cost = (
+        (estimated_input_tokens * INPUT_TOKEN_COST) +
+        (estimated_output_tokens * OUTPUT_TOKEN_COST)
+    )
+    
+    # Warning threshold: $0.50
+    WARNING_THRESHOLD = 0.50
+    
+    return {
+        'estimated_input_tokens': estimated_input_tokens,
+        'estimated_output_tokens': estimated_output_tokens,
+        'estimated_cost': estimated_cost,
+        'warning_threshold_exceeded': estimated_cost > WARNING_THRESHOLD,
+        'warning_threshold': WARNING_THRESHOLD
+    }
+
+
+def check_database_availability_for_timeframe(
+    timeframe_str: Optional[str],
+    start_time: Optional[datetime]
+) -> Optional[str]:
+    """
+    Check if database is needed for the requested timeframe
+    
+    Args:
+        timeframe_str: Human-readable timeframe description
+        start_time: Start time of the timeframe
+    
+    Returns:
+        Warning message if database is needed but not available, None otherwise
+    """
+    if start_time is None:
+        # Count-based query, no issue
+        return None
+    
+    if db_manager.enabled:
+        # Database is available, no issue
+        return None
+    
+    # Calculate timeframe length
+    now = datetime.now(timezone.utc)
+    timeframe_length = (now - start_time).total_seconds() / 3600  # in hours
+    
+    # If timeframe is longer than MAX_MESSAGE_AGE_HOURS, warn user
+    if timeframe_length > MAX_MESSAGE_AGE_HOURS:
+        warning = (
+            f"⚠️ **Database Not Configured**\n\n"
+            f"You're querying a timeframe of **{timeframe_str}**, but the bot is running "
+            f"without a persistent database.\n\n"
+            f"**This means:**\n"
+            f"• Only messages from the last **{MAX_MESSAGE_AGE_HOURS} hours** are available\n"
+            f"• Only the last **{MAX_STORED_MESSAGES} messages** are kept in memory\n"
+            f"• Message history is lost when the bot restarts\n\n"
+            f"**To access longer history:**\n"
+            f"1. Set up a PostgreSQL database (see README.md)\n"
+            f"2. Add the `DATABASE_URL` environment variable\n"
+            f"3. Redeploy the bot\n\n"
+            f"I'll search the available messages, but results may be limited."
+        )
+        return warning
+    
+    return None
+
+
 def format_messages_for_summary(messages: List[dict]) -> str:
     """
     Format messages into a string for the AI to summarize
@@ -311,15 +336,16 @@ def format_messages_for_summary(messages: List[dict]) -> str:
     return "\n".join(formatted)
 
 
-async def generate_summary(messages_text: str) -> tuple:
+async def generate_summary(messages_text: str, context: ContextTypes.DEFAULT_TYPE = None) -> str:
     """
     Generate a summary using Claude API (Anthropic)
     
     Args:
         messages_text: Formatted string of messages to summarize
+        context: Telegram context for sending admin notifications (optional)
     
     Returns:
-        Tuple of (summary_text, input_tokens, output_tokens, model_name)
+        AI-generated summary in bullet point format
     """
     # Determine which model to use
     # IMPORTANT: Use claude-3-haiku-20240307 as the default (most basic and universally available)
@@ -329,24 +355,48 @@ async def generate_summary(messages_text: str) -> tuple:
     
     try:
         if not messages_text or messages_text == "No messages available to summarize.":
-            return ("⚠️ No recent messages available to summarize. I can only summarize messages that I've seen since being added to the group.", 0, 0, model_name)
+            return "⚠️ No recent messages available to summarize. I can only summarize messages that I've seen since being added to the group."
+        
+        # Check budget before making API call
+        tracker = get_cost_tracker()
+        if tracker:
+            can_proceed, error_msg = tracker.can_make_request(estimated_tokens=2000)
+            if not can_proceed:
+                logger.warning("Budget limit reached, blocking API request")
+                return error_msg
         
         # Create the prompt for Claude
-        prompt = f"""Summarize these messages in a casual, friendly way like you're catching me up. What'd I miss?
+        prompt = f"""Analyze and summarize the following Telegram conversation.
 
-BUT - and this is CRITICAL - ONLY mention things that are actually in the messages below. Don't make up names, events, or details. Don't add creative interpretations or assume things that weren't said. Stick strictly to what was ACTUALLY written in these messages.
-
-Just give me the vibe of the conversation and anything I actually need to know - who said what about what, any plans being made, anyone asking for me, funny moments, whatever matters. But everything you mention must be directly from the messages.
-
-Be natural about it. Pretend I just texted you "bro what happened in the chat" and you're filling me in - but you're only telling me what ACTUALLY happened based on these exact messages.
-
-If there's only like 2-3 messages, just tell me what they said. If it's a ton of messages, give me the condensed version.
-
-Keep it chill and conversational - use a casual, friendly tone like we're texting. No formal headers or bullet points unless it actually makes it clearer.
+⚠️ CRITICAL GROUNDING RULES - READ CAREFULLY:
+• ONLY use information that is ACTUALLY present in the messages below
+• DO NOT make up names, events, details, or any other information
+• DO NOT invent conversations or assume things that weren't explicitly said
+• DO NOT add creative interpretations or fill in gaps with assumptions
+• If someone's name appears in the messages, use it. If not, don't make one up.
+• If a section has NO relevant content, COMPLETELY OMIT that section from your output
+• If the messages contain only casual chat with no significant content, say so briefly
 
 Messages:
 {messages_text}
-"""
+
+Provide a structured summary with the following sections. IMPORTANT: Only include a section if there is actual, relevant information for it. If a section has nothing to report, skip it entirely.
+
+1. **Main Topics Discussed**: List the key subjects or themes that were actually discussed (only include if there are identifiable topics)
+
+2. **Key Points**: Important details, facts, or information that were shared (only include if there are noteworthy points)
+
+3. **Decisions Made**: Any conclusions, agreements, or decisions that were reached (only include if actual decisions were made)
+
+4. **Action Items**: Tasks, follow-ups, or commitments that were mentioned (only include if action items exist)
+
+5. **Questions Raised**: Unanswered questions or concerns that were brought up (only include if questions remain open)
+
+Remember: 
+- Only report what was ACTUALLY said in the messages
+- Omit any section that has no relevant content
+- Keep it concise and factual
+- If the conversation is just casual chat with nothing significant, it's fine to say: "Just casual conversation, no major topics or action items."
         
         # Call Claude API
         # Available Claude models (in order of accessibility):
@@ -369,12 +419,30 @@ Messages:
         )
         
         summary = response.content[0].text.strip()
-        input_tokens = response.usage.input_tokens
-        output_tokens = response.usage.output_tokens
         
-        logger.info(f"Summary generated - Input tokens: {input_tokens}, Output tokens: {output_tokens}")
+        # Track the cost after successful API call
+        if tracker:
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+            
+            cost_info = tracker.track_request(input_tokens, output_tokens)
+            logger.info(f"Cost tracked: ${cost_info['request_cost']:.6f} (Total: ${cost_info['total_cost']:.4f}, {cost_info['budget_used_pct']:.1f}% of budget)")
+            
+            # Check if we've crossed any warning thresholds
+            warning = tracker.check_warning_thresholds()
+            if warning and context and ADMIN_USER_ID:
+                try:
+                    # Send warning to admin
+                    await context.bot.send_message(
+                        chat_id=int(ADMIN_USER_ID),
+                        text=warning['message'],
+                        parse_mode='Markdown'
+                    )
+                    logger.info(f"Sent {warning['threshold']}% budget warning to admin")
+                except Exception as e:
+                    logger.error(f"Failed to send budget warning to admin: {e}")
         
-        return (summary, input_tokens, output_tokens, model_name)
+        return summary
         
     except Exception as e:
         error_msg = f"Error generating summary with model '{model_name}': {e}"
@@ -454,7 +522,7 @@ Messages:
             detailed_error += "3. Confirm Anthropic API is operational: https://status.anthropic.com/\n"
             detailed_error += "4. Try redeploying your bot\n"
         
-        return (detailed_error, 0, 0, model_name)
+        return detailed_error
 
 
 # Store recent messages in memory (in production, use a database)
@@ -623,6 +691,9 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "❌ Invalid timeframe format.\n\n"
                         "**Valid formats:**\n"
                         "• `/summarize 50` - Last 50 messages\n"
+                        "• `/summarize 24h` - Last 24 hours (shorthand)\n"
+                        "• `/summarize 60d` - Last 60 days (shorthand)\n"
+                        "• `/summarize 2mo` - Last 2 months (shorthand)\n"
                         "• `/summarize today`\n"
                         "• `/summarize yesterday`\n"
                         "• `/summarize last 2 hours`\n"
@@ -646,6 +717,9 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "❌ Invalid timeframe format.\n\n"
                     "**Valid formats:**\n"
                     "• `/summarize 50` - Last 50 messages\n"
+                    "• `/summarize 24h` - Last 24 hours (shorthand)\n"
+                    "• `/summarize 60d` - Last 60 days (shorthand)\n"
+                    "• `/summarize 2mo` - Last 2 months (shorthand)\n"
                     "• `/summarize today`\n"
                     "• `/summarize yesterday`\n"
                     "• `/summarize last 2 hours`\n"
@@ -678,6 +752,12 @@ async def handle_summary_request(
     """
     Handle summary request with custom parameters
     
+    This function now includes:
+    - Database requirement checks for long timeframes
+    - Hard message limits with smart sampling
+    - Cost estimation and warnings
+    - User confirmation for expensive operations
+    
     Args:
         update: Telegram update object
         context: Telegram context
@@ -693,10 +773,18 @@ async def handle_summary_request(
         # Bot now works in both group chats and private chats
         # No chat type restriction needed
         
+        # STEP 1: Check database availability for timeframe queries
+        db_warning = check_database_availability_for_timeframe(timeframe_str, start_time)
+        if db_warning:
+            # Send warning but continue processing
+            await update.message.reply_text(db_warning, parse_mode='Markdown')
+            # Brief pause for user to read
+            await asyncio.sleep(2)
+        
         # Send a "working on it" message
         status_message = await update.message.reply_text("🤔 Let me read through the recent messages and create a summary for you...")
         
-        # Get stored messages with custom limit or timeframe
+        # STEP 2: Get stored messages with custom limit or timeframe
         if start_time is not None:
             # Timeframe-based retrieval
             messages = await get_stored_messages(
@@ -725,31 +813,89 @@ async def handle_summary_request(
                 )
             return
         
-        # Format messages
+        # STEP 3: Check message count and apply smart sampling if needed
+        sampler = get_smart_sampler()
+        check_result = sampler.check_message_count(len(messages))
+        
+        original_message_count = len(messages)
+        sampling_applied = False
+        
+        if check_result['should_sample']:
+            # Inform user about sampling
+            if check_result['warning_message']:
+                await status_message.edit_text(check_result['warning_message'], parse_mode='Markdown')
+                await asyncio.sleep(2)  # Let user read the message
+            
+            # Apply smart sampling
+            messages = sampler.sample_messages(
+                messages,
+                check_result['recommended_sample_size']
+            )
+            sampling_applied = True
+            logger.info(f"Smart sampling applied: {original_message_count} → {len(messages)} messages")
+        
+        # STEP 4: Format messages for API
         messages_text = format_messages_for_summary(messages)
         
-        # Generate summary
-        summary, input_tokens, output_tokens, model_name = await generate_summary(messages_text)
+        # STEP 5: Estimate cost and warn if expensive
+        cost_estimate = estimate_api_cost(len(messages), messages_text)
         
-        # Track summary in database
-        user_id = update.message.from_user.id if update.message.from_user else None
-        await db_manager.track_summary(
-            chat_id=chat_id,
-            user_id=user_id,
-            message_count=len(messages),
-            input_tokens=input_tokens,
-            output_tokens=output_tokens,
-            model=model_name
-        )
+        if cost_estimate['warning_threshold_exceeded']:
+            # Warn user about high cost
+            warning_msg = (
+                f"⚠️ **High Cost Warning**\n\n"
+                f"This summary will be expensive:\n"
+                f"• Estimated cost: **${cost_estimate['estimated_cost']:.4f}**\n"
+                f"• Estimated tokens: ~{cost_estimate['estimated_input_tokens'] + cost_estimate['estimated_output_tokens']:,}\n"
+                f"• Warning threshold: ${cost_estimate['warning_threshold']:.2f}\n\n"
+                f"📊 Processing {len(messages):,} messages"
+            )
+            if sampling_applied:
+                warning_msg += f" (sampled from {original_message_count:,})"
+            warning_msg += "\n\n⚡ Proceeding with summary generation..."
+            
+            await status_message.edit_text(warning_msg, parse_mode='Markdown')
+            await asyncio.sleep(2)
+            
+            # Check budget before proceeding
+            tracker = get_cost_tracker()
+            if tracker:
+                can_proceed, budget_error = tracker.can_make_request(
+                    estimated_tokens=cost_estimate['estimated_input_tokens'] + cost_estimate['estimated_output_tokens']
+                )
+                if not can_proceed:
+                    await status_message.edit_text(budget_error, parse_mode='Markdown')
+                    return
         
-        # Send the summary with appropriate context
+        # Update status
+        await status_message.edit_text("🤖 Generating AI summary...", parse_mode='Markdown')
+        
+        # STEP 6: Generate summary (pass context for admin notifications)
+        summary = await generate_summary(messages_text, context)
+        
+        # STEP 7: Prepare response with appropriate context
+        response_parts = [summary]
+        
+        # Add statistics
+        stats_line = f"\n\n📊 Summarized **{len(messages):,} messages**"
+        if sampling_applied:
+            stats_line += f" (intelligently sampled from **{original_message_count:,} messages**)"
+        
         if start_time is not None:
             # Format the dates nicely
             start_str = start_time.strftime('%Y-%m-%d %H:%M UTC')
             end_str = end_time.strftime('%Y-%m-%d %H:%M UTC') if end_time else 'now'
-            response = f"{summary}\n\n📊 Summarized {len(messages)} messages from **{timeframe_str}**\n⏰ ({start_str} to {end_str})"
+            stats_line += f" from **{timeframe_str}**\n⏰ ({start_str} to {end_str})"
         else:
-            response = f"{summary}\n\n📊 Summarized {len(messages)} messages from the last {MAX_MESSAGE_AGE_HOURS} hours."
+            stats_line += f" from the last {MAX_MESSAGE_AGE_HOURS} hours"
+        
+        response_parts.append(stats_line)
+        
+        # Add cost info if significant
+        if cost_estimate['estimated_cost'] > 0.01:  # More than 1 cent
+            response_parts.append(f"\n💰 Estimated cost: ${cost_estimate['estimated_cost']:.4f}")
+        
+        response = "".join(response_parts)
         
         await status_message.edit_text(response, parse_mode='Markdown')
         
@@ -763,6 +909,84 @@ async def handle_summary_request(
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle all messages to store them"""
     await store_message(update)
+
+
+async def usage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /usage command - show current month's spending"""
+    try:
+        tracker = get_cost_tracker()
+        if not tracker:
+            await update.message.reply_text(
+                "❌ Cost tracking is not enabled.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Get formatted usage message
+        usage_msg = tracker.get_formatted_usage_message()
+        
+        await update.message.reply_text(usage_msg, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Error handling /usage command: {e}")
+        await update.message.reply_text(
+            f"❌ Error retrieving usage statistics: {str(e)}"
+        )
+
+
+async def resetusage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle the /resetusage command - manually reset usage (admin only)"""
+    try:
+        # Check if user is admin
+        user_id = update.effective_user.id
+        
+        if not ADMIN_USER_ID:
+            await update.message.reply_text(
+                "❌ Admin user not configured. Set ADMIN_USER_ID environment variable.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        if str(user_id) != str(ADMIN_USER_ID):
+            await update.message.reply_text(
+                "🚫 Unauthorized. This command is only available to the bot administrator.",
+                parse_mode='Markdown'
+            )
+            logger.warning(f"Unauthorized /resetusage attempt by user {user_id}")
+            return
+        
+        tracker = get_cost_tracker()
+        if not tracker:
+            await update.message.reply_text(
+                "❌ Cost tracking is not enabled.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Reset usage
+        previous_stats = tracker.reset_usage()
+        
+        msg = (
+            f"✅ **Usage Reset Complete**\n\n"
+            f"**Previous Month Statistics:**\n"
+            f"• Period: {previous_stats['month']}\n"
+            f"• Total cost: ${previous_stats['total_cost']:.4f}\n"
+            f"• Input tokens: {previous_stats['input_tokens']:,}\n"
+            f"• Output tokens: {previous_stats['output_tokens']:,}\n"
+            f"• Requests: {previous_stats['request_count']}\n\n"
+            f"**Current Month:**\n"
+            f"• All counters have been reset to zero\n"
+            f"• Fresh budget of ${tracker.monthly_budget:.2f} available"
+        )
+        
+        await update.message.reply_text(msg, parse_mode='Markdown')
+        logger.info(f"Usage manually reset by admin (user {user_id})")
+        
+    except Exception as e:
+        logger.error(f"Error handling /resetusage command: {e}")
+        await update.message.reply_text(
+            f"❌ Error resetting usage: {str(e)}"
+        )
 
 
 async def initialize_database():
@@ -792,15 +1016,27 @@ def main():
     else:
         logger.info("ℹ️ Database not configured - using in-memory storage (last 100 messages)")
     
+    # Initialize cost tracker
+    logger.info("Initializing cost tracking system...")
+    monthly_budget = float(os.getenv('MONTHLY_BUDGET', '10.0'))
+    initialize_cost_tracker(monthly_budget=monthly_budget)
+    logger.info(f"✅ Cost tracking enabled with ${monthly_budget:.2f} monthly budget")
+    
+    if ADMIN_USER_ID:
+        logger.info(f"✅ Admin notifications enabled for user ID: {ADMIN_USER_ID}")
+    else:
+        logger.warning("⚠️ ADMIN_USER_ID not set - budget warnings will not be sent")
+    
     # Create the Application
     application = Application.builder().token(telegram_token).build()
     
     # Register command handlers
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("usage", usage_command))
     application.add_handler(CommandHandler("summary", summary_command))
     application.add_handler(CommandHandler("summarize", summary_command))  # Also support /summarize
+    application.add_handler(CommandHandler("usage", usage_command))
+    application.add_handler(CommandHandler("resetusage", resetusage_command))
     
     # Register handler for mentions (when bot is tagged)
     application.add_handler(MessageHandler(
